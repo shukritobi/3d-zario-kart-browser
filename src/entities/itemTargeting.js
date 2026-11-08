@@ -10,3 +10,11 @@ export function nearestCenterlineIndex(points,x,z,hint=-1,windowSize=12){
   }
   return !full&&best>225?nearestCenterlineIndex(points,x,z,-1,windowSize):{index,distanceSquared:best};
 }
+
+/** Squared distance from a point to a moving segment, prevents projectile tunneling. */
+export function pointSegmentDistanceSquared(px,pz,ax,az,bx,bz){
+  const dx=bx-ax,dz=bz-az,den=dx*dx+dz*dz;
+  const t=den>1e-8?Math.max(0,Math.min(1,((px-ax)*dx+(pz-az)*dz)/den)):0;
+  const qx=px-(ax+t*dx),qz=pz-(az+t*dz);
+  return qx*qx+qz*qz;
+}

@@ -9,7 +9,7 @@
  */
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
-import { nearestCenterlineIndex } from './itemTargeting.js';
+import { nearestCenterlineIndex, pointSegmentDistanceSquared } from './itemTargeting.js';
 import { getToonMaterial, getCartoonOutlineMaterial } from '../render/MaterialLibrary.js';
 
 // ---------------------------------------------------------------------------
@@ -336,6 +336,7 @@ export class ShellProjectile {
     // shell seta _vY no ARC phase e no frame seguinte o throw-hop usa `m`
     // antes da declaração → TDZ. `m` agora é o PRIMEIRO statement.
     const m = this.mesh;
+    const prevX=m.position.x,prevZ=m.position.z;
     // Spawn pop-in (ease-out scale, ~130ms).
     if (this._popT < 1) {
       this._popT = Math.min(1, this._popT + dt * 8);
@@ -346,8 +347,8 @@ export class ShellProjectile {
     if (this._vY) {
       m.position.y += this._vY * dt;
       this._vY -= 9.8 * dt;
-      if (m.position.y <= 0.3) {
-        m.position.y = 0.3;
+      if (m.position.y <= this._groundY) {
+        m.position.y = this._groundY;
         this._vY = 0;
       }
     }
@@ -405,7 +406,7 @@ export class ShellProjectile {
       if (m.position.y <= 3.4 && this._arcT > 0.9) {
         this._descended = true;
         if (this._shadow) { this.scene?.remove(this._shadow); this._shadow = null; }
-        m.position.y = 1.2;
+        m.position.y = (this.target ? kartPosition(this.target).y : kartPosition(this.owner).y) + 1.1;
       }
       return;
     }
@@ -458,9 +459,9 @@ export class ShellProjectile {
       if (this.blue && this._descended && k !== this.target) continue; // leader only
       if (this.blue && !this._descended) continue; // arc phase never collides
       const p = kartPosition(k);
-      const dx = p.x - m.position.x;
-      const dz = p.z - m.position.z;
-      if (dx * dx + dz * dz < 4.0) {
+      // A 55m/s shell traverses 2.75m per 50ms frame. Testing only its
+      // endpoint missed fast passes and made items appear ineffective.
+      if (pointSegmentDistanceSquared(p.x,p.z,prevX,prevZ,m.position.x,m.position.z) < 5.29) {
         // AUDIT r8 (MK8D blue-shell dodge counterplay): the spiny's dive is
         // dodgeable. A leader who is invincible (star / item-box pickup /
         // trick-landing i-frames granted in main.js) or mid-trick (airborne
@@ -687,7 +688,8 @@ export class Banana {
     const drop = opts.rear ? -2.2 : -1.5; // rear drops land further behind
     const behind = headingVector(ownerKart).multiplyScalar(drop);
     this.mesh = buildBananaMesh();
-    this.mesh.position.set(opos.x + behind.x, opos.y + 0.3, opos.z + behind.y);
+    this._groundY = opos.y + 0.3;
+    this.mesh.position.set(opos.x + behind.x, this._groundY, opos.z + behind.y);
     // AUDIT: MK8 banana deitada ATRAVESSA a pista (pontas de lado a lado) —
     // orienta o crescente perpendicular ao tráfego + jitter fino de variedade.
     const fwd = headingVector(ownerKart); // (sin h, cos h)
@@ -700,7 +702,7 @@ export class Banana {
       new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.32, depthWrite: false })
     );
     this._shadow.rotation.x = -Math.PI / 2;
-    this._shadow.position.set(this.mesh.position.x, 0.06, this.mesh.position.z);
+    this._shadow.position.set(this.mesh.position.x, this._groundY-0.24, this.mesh.position.z);
     this.scene?.add(this._shadow);
     // AUDIT (Feco): 'não dá pra ver quando arremessa' — the banana appeared
     // at full size with zero feedback. Pop-in: scale 0 -> 1 in ~130ms with an
@@ -743,7 +745,7 @@ export class Banana {
       }
     }
     // Shadow follows the banana (anchors it to the road through the hop).
-    if (this._shadow) this._shadow.position.set(m.position.x, 0.06, m.position.z);
+    if (this._shadow) this._shadow.position.set(m.position.x, this._groundY-0.24, m.position.z);
     // Blink in the final seconds as a fair-play warning.
     if (this.age > this.life - 2.5) {
       this.mesh.visible = Math.floor(this.age * 6) % 2 === 0;
@@ -756,9 +758,11 @@ export class Banana {
       if (k === this.owner && this.age < 0.5) continue; // spawn grace
       if (k.finished) continue;
       const p = kartPosition(k);
-      const dx = p.x - m.position.x;
-      const dz = p.z - m.position.z;
-      if (dx * dx + dz * dz < rr) {
+      // Sweep the victim's approximate last-frame travel against this fixed
+      // banana hazard, not just the endpoint (fast karts skipped 0.7m traps).
+      const vx = Math.sin(k.state?.heading ?? 0) * (k.state?.speed ?? 0) * dt;
+      const vz = Math.cos(k.state?.heading ?? 0) * (k.state?.speed ?? 0) * dt;
+      if (pointSegmentDistanceSquared(m.position.x,m.position.z,p.x-vx,p.z-vz,p.x,p.z) < rr) {
         k.hitBanana?.();
         this.audio?.play?.('crash');
         this.die();

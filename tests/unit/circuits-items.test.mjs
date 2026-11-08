@@ -38,3 +38,12 @@ test('local nearest point lookup wraps smoothly over track seam', () => {
   const p=pts[2],result=nearestCenterlineIndex(pts,p.x,p.z,n-2);
   assert.equal(result.index,2);
 });
+
+
+test('shell sweep detects hits even when projectile jumps past opponent in one frame',async()=>{
+  const {pointSegmentDistanceSquared}=await import('../../src/entities/itemTargeting.js');
+  assert.ok(pointSegmentDistanceSquared(5,0,0,0,10,0)<0.0001);
+  assert.ok(pointSegmentDistanceSquared(5,2.1,0,0,10,0)<5.29);
+  assert.ok(pointSegmentDistanceSquared(5,3,0,0,10,0)>5.29);
+  assert.equal(pointSegmentDistanceSquared(3,4,0,0,0,0),25);
+});
