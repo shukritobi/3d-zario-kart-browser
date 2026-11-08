@@ -93,7 +93,12 @@ export function createQualityProfile(renderer) {
   const isiOS = /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   if (isiOS && !queryOverride()) {
-    profile.maxPixelRatio = Math.min(profile.maxPixelRatio, 1.4);
+    // iPad renders far more CSS pixels than iPhone at the same DPR.
+    // Restrict pixel workload to ~1.85 million pixels before postprocessing.
+    const area = Math.max(1, window.innerWidth * window.innerHeight);
+    const tablet = Math.min(innerWidth, innerHeight) >= 650;
+    const iPadPixelRatio = Math.max(1.0, Math.min(1.45, Math.sqrt(1850000 / area)));
+    profile.maxPixelRatio = Math.min(profile.maxPixelRatio, tablet ? iPadPixelRatio : 1.4);
     profile.shadowMapSize = Math.min(profile.shadowMapSize, 512);
     profile.shadows = false;
     profile.bloom = false;

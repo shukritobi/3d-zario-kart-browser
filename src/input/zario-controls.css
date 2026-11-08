@@ -6,3 +6,22 @@
 .zario-landscape-hint{display:none;position:fixed;top:max(5px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);pointer-events:none;z-index:99990;white-space:nowrap;background:rgba(4,15,32,.8);padding:8px 14px;border-radius:16px;color:#fff;font:700 11px system-ui,sans-serif;box-shadow:0 2px 14px #08152833}
 @media(pointer:fine){.zario-controls{display:none}}
 @media(orientation:portrait) and (pointer:coarse){.zario-landscape-hint{display:block}}
+
+/* Tablet landscape: thumb-friendly hit targets without obscuring the course. */
+.zario-controls { flex-wrap: wrap; justify-content:center; width:max-content; max-width:95vw; gap:6px; }
+.zario-controls button:disabled{opacity:.73;cursor:default;pointer-events:none}
+.zario-controls button.active{border-color:#ffdc5d;background:#32426a;color:#ffdc5d}
+@media(pointer:coarse) and (min-width:960px) and (orientation:landscape){
+  .sk3d-touch-btn{width:86px!important;height:86px!important;bottom:calc(28px + env(safe-area-inset-bottom, 0px))!important}
+  .sk3d-touch-left{left:calc(28px + env(safe-area-inset-left, 0px))!important}
+  .sk3d-touch-right{left:calc(126px + env(safe-area-inset-left, 0px))!important}
+  .sk3d-touch-item{right:calc(28px + env(safe-area-inset-right, 0px))!important}
+  .sk3d-touch-drift{right:calc(126px + env(safe-area-inset-right, 0px))!important}
+  .sk3d-hud-bottom{bottom:170px!important}
+  .zario-controls{bottom:calc(18px + env(safe-area-inset-bottom, 0px))}
+  .zario-controls button{min-height:42px;padding:11px 14px;font-size:11px}
+}
+@media(pointer:coarse) and (max-width:760px){
+  .zario-controls button{font-size:9px;padding:7px 10px;min-height:30px}
+  .zario-controls{max-width:66vw}
+}

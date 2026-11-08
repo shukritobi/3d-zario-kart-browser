@@ -1169,7 +1169,9 @@ function updateCamera(dt, t) {
     .addScaledVector(_side, camSwing);
   _camDesired.y += CONFIG.camera.followHeight + camBoostKick * 0.4;
 
-  const lerp = 1 - Math.exp(-CONFIG.camera.lerp * dt);
+  // The original chase camera lag felt like oversteer on large iPad displays.
+  const follow = isTouchMode() ? Math.max(7.5, CONFIG.camera.lerp) : CONFIG.camera.lerp;
+  const lerp = 1 - Math.exp(-follow * dt);
   camPos.lerp(_camDesired, lerp);
   camera.position.copy(camPos);
 
@@ -1287,6 +1289,9 @@ loop.start((dt, t) => {
       if (!DEMO) {
         readKeyboardInput();
         let steer = zarioControls.gamepadActive ? input.steer : (zarioControls.tiltEnabled ? zarioControls.getSteer() : (isTouchMode() ? touchSteer : input.steer));
+        steer = zarioControls.applySteer(steer);
+        zarioControls.showSteer(steer);
+        if (playerKart) playerKart._gripMode = zarioControls.gripMode;
         // Steer assist (accessibility, audit r3): soft pull toward the track
         // centerline (same signed-error math as AIController). It fades out as
         // the player's own input grows, so it nudges but never fights them.

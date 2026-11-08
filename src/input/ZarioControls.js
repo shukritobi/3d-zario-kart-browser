@@ -1,5 +1,6 @@
 /* Zario Kart original mobile input adapter. Preserves the upstream MIT engine. */
 import './zario-controls.css';
+import {screenTilt, normalizeAngle, tiltToSteer} from './tiltMath.js';
 
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 const button = (text, title) => {
@@ -23,7 +24,13 @@ export class ZarioControls {
     this.neutral = null;
     this.lastRaw = null;
     this.lastSampleTime = 0;
-    this.inverted = false;
+    // Keep the player's steering preference independent of gyro permissions.
+    try { this.inverted = localStorage.getItem('zario.steer.inverted.v2') === '1'; }
+    catch { this.inverted = false; }
+    try { this.gripMode = localStorage.getItem('zario.handling.v1') === 'classic' ? 'classic' : 'tight'; }
+    catch { this.gripMode = 'tight'; }
+    try { this.axis = ['auto', 'beta', 'gamma'].includes(localStorage.getItem('zario.tilt.axis.v1')) ? localStorage.getItem('zario.tilt.axis.v1') : 'auto'; }
+    catch { this.axis = 'auto'; }
     this.gamepadActive = false;
     this.lastItem = false;
     this.lastPause = false;
@@ -31,10 +38,16 @@ export class ZarioControls {
     this.element.className = 'zario-controls';
     this.toggle = button('GYRO OFF', 'Enable tilt steering (requires motion permission)');
     this.recenterButton = button('RECENTER', 'Calibrate your comfortable steering position');
-    this.invertButton = button('↔', 'Invert tilt steering direction');
+    this.invertButton = button('↔ FLIP', 'Reverse steering for touch, gyro and gamepad');
+    this.invertButton.classList.toggle('active', this.inverted);
     this.recenterButton.hidden = true;
-    this.invertButton.hidden = true;
-    this.element.append(this.toggle, this.recenterButton, this.invertButton);
+    this.axisButton = button('AXIS: AUTO', 'Choose motion sensor axis for unusual tablet orientations');
+    this.axisButton.hidden = true;
+    this.gripButton = button('GRIP: TIGHT', 'Switch between tight arcade handling and classic loose drift');
+    this.statusButton = button('◀  •  ▶', 'Steering input indicator');
+    this.statusButton.disabled = true;
+    this.updateLabels();
+    this.element.append(this.toggle, this.recenterButton, this.axisButton, this.invertButton, this.gripButton, this.statusButton);
     document.body.appendChild(this.element);
 
     this.hint = document.createElement('div');
@@ -47,26 +60,65 @@ export class ZarioControls {
     this.invertButton.addEventListener('click', () => {
       this.inverted = !this.inverted;
       this.invertButton.classList.toggle('active', this.inverted);
-      this.recenter();
+      try { localStorage.setItem('zario.steer.inverted.v2', this.inverted ? '1' : '0'); } catch {}
+      this.updateLabels();
+    });
+    this.gripButton.addEventListener('click', () => {
+      this.gripMode = this.gripMode === 'tight' ? 'classic' : 'tight';
+      try { localStorage.setItem('zario.handling.v1', this.gripMode); } catch {}
+      this.updateLabels();
+    });
+    this.axisButton.addEventListener('click', () => {
+      this.axis = { auto: 'beta', beta: 'gamma', gamma: 'auto' }[this.axis];
+      try { localStorage.setItem('zario.tilt.axis.v1', this.axis); } catch {}
+      this.neutral = null;
+      this.lastRaw = null;
+      this.steer = 0;
+      this.updateLabels();
     });
     window.addEventListener('deviceorientation', (event) => this.readSensor(event), { passive: true });
-    window.addEventListener('orientationchange', () => this.recenter());
-    screen.orientation?.addEventListener?.('change', () => this.recenter());
+    window.addEventListener('orientationchange', () => this.resetTilt());
+    screen.orientation?.addEventListener?.('change', () => this.resetTilt());
     window.addEventListener('gamepadconnected', () => this.updatePadLabel());
     window.addEventListener('gamepaddisconnected', () => this.updatePadLabel());
     this.updatePadLabel();
   }
 
   angle() {
-    const deg = Number(screen.orientation?.angle ?? window.orientation ?? 0);
-    return ((deg % 360) + 360) % 360;
+    const screenAngle = Number(screen.orientation?.angle);
+    const legacyAngle = Number(window.orientation);
+    // Some iPad Chrome/WebKit builds report a stale 0 in screen.orientation
+    // while the older orientation property has the actual screen rotation.
+    if (Number.isFinite(legacyAngle) && Math.abs(legacyAngle) > 0 &&
+        Number.isFinite(screenAngle) && normalizeAngle(screenAngle) === 0 &&
+        innerWidth > innerHeight) return normalizeAngle(legacyAngle);
+    return normalizeAngle(Number.isFinite(screenAngle) ? screenAngle :
+      (Number.isFinite(legacyAngle) ? legacyAngle : 0));
   }
 
   sensorAngle(event) {
-    const a = this.angle();
-    const raw = (a === 90 || a === 270) ? event.beta : event.gamma;
-    if (typeof raw !== 'number' || !Number.isFinite(raw)) return null;
-    return raw * (a === 90 ? -1 : 1);
+    return screenTilt(event, this.angle(), this.axis);
+  }
+
+  resetTilt() {
+    this.neutral = null;
+    this.lastRaw = null;
+    this.lastSampleTime = 0;
+    this.steer = 0;
+  }
+
+  updateLabels() {
+    this.invertButton.textContent = this.inverted ? '↔ FLIPPED' : '↔ FLIP';
+    this.gripButton.textContent = this.gripMode === 'tight' ? 'GRIP: TIGHT' : 'GRIP: CLASSIC';
+    this.axisButton.textContent = 'AXIS: ' + this.axis.toUpperCase();
+  }
+
+  applySteer(steer) {
+    return clamp((this.inverted ? -1 : 1) * steer, -1, 1);
+  }
+
+  showSteer(steer) {
+    this.statusButton.textContent = steer < -0.12 ? '◀ LEFT' : steer > 0.12 ? 'RIGHT ▶' : '◀  •  ▶';
   }
 
   readSensor(event) {
@@ -77,10 +129,9 @@ export class ZarioControls {
     if (!this.tiltEnabled) return;
     if (this.neutral === null) { this.neutral = raw; return; }
     // Relative calibration removes dependence on how the player holds the phone.
-    const degrees = ((raw - this.neutral + 540) % 360) - 180;
-    const magnitude = Math.max(0, Math.abs(degrees) - 3) / 24;
-    const target = clamp(Math.sign(degrees) * magnitude * (this.inverted ? -1 : 1), -1, 1);
-    this.steer += 0.28 * (target - this.steer);
+    const target = tiltToSteer(raw, this.neutral);
+    // Avoid slow steering tails: reactive input with a little sensor noise filtering.
+    this.steer += 0.42 * (target - this.steer);
   }
 
   recenter() {
@@ -96,7 +147,7 @@ export class ZarioControls {
       this.neutral = null;
       this.toggle.textContent = 'GYRO OFF';
       this.recenterButton.hidden = true;
-      this.invertButton.hidden = true;
+      this.axisButton.hidden = true;
       this.touchRoot?.classList.remove('zario-tilt-active');
       return;
     }
@@ -112,7 +163,7 @@ export class ZarioControls {
       this.steer = 0;
       this.toggle.textContent = 'GYRO ON ✓';
       this.recenterButton.hidden = false;
-      this.invertButton.hidden = false;
+      this.axisButton.hidden = false;
       this.touchRoot?.classList.add('zario-tilt-active');
     } catch (err) {
       console.info('[Zario Kart] tilt unavailable, touch remains active:', err?.message || err);
@@ -161,8 +212,13 @@ export class ZarioControls {
   }
 
   getSteer() {
-    // Don't lock the kart into a turn if Safari suspends motion events.
-    return this.tiltEnabled && this.lastSampleTime && performance.now() - this.lastSampleTime < 1200 ? this.steer : 0;
+    // Never leave the kart steering into a wall when sensor events suspend.
+    if (!this.tiltEnabled || !this.lastSampleTime ||
+        performance.now() - this.lastSampleTime > 650) {
+      this.steer = 0;
+      return 0;
+    }
+    return this.steer;
   }
 
   status() {
@@ -173,6 +229,9 @@ export class ZarioControls {
       neutral: this.neutral,
       tiltSteer: +this.steer.toFixed(3),
       inverted: this.inverted,
+      axis: this.axis,
+      angle: this.angle(),
+      handling: this.gripMode,
       gamepadConnected: this.gamepadActive,
     };
   }

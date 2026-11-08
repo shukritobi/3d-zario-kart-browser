@@ -2112,7 +2112,7 @@ export class Kart {
       this._controls.steer = THREE.MathUtils.lerp(
         this._controls.steer,
         this._steerTarget,
-        Math.min(1, 9 * dt)
+        Math.min(1, (this.isPlayer && this._gripMode !== 'classic' ? 14 : 9) * dt)
       );
       KartPhysics.step(this, this._controls, dt, ctx.track, ctx.raceManager);
     }

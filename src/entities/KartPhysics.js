@@ -19,6 +19,7 @@
  */
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
+import { lateralVelocityStep, playerDriftSteerRate } from './handling.js';
 // AUDIT r18-FIX (gameplay auditor): terrain now rolls ±5m beyond the
 // corridor — off-road karts must ride it or they bury/float on the hills.
 import { terrainHeight } from '../track/TrackBuilder.js';
@@ -350,7 +351,7 @@ export class KartPhysics {
     } else {
       const speed01 = Math.min(1, speedAbs / P.maxSpeed);
       let rate = P.steerSpeed + (P.steerSpeedLow - P.steerSpeed) * (1 - speed01);
-      if (s.drifting) rate = P.driftSteer;
+      if (s.drifting) rate = playerDriftSteerRate(P.driftSteer, kart.isPlayer, kart._gripMode);
       if (kart._airTime > 0.05) rate *= P.airControl * 0.4; // reduced control airborne
       const steerSign = s.speed < 0 ? -1 : 1;
       const steerEff = input.steer * steerSign * (speedAbs > 0.25 ? 1 : 0.3);
@@ -466,9 +467,11 @@ export class KartPhysics {
 
     // ---- lateral velocity (drift slide) -------------------------------------
     let lat = kart._latVel || 0;
-    const grip = s.drifting ? 1.5 : P.lateralGrip;
-    lat *= Math.exp(-grip * dt);
-    if (s.drifting && input.steer !== 0 && !s.spinOut) lat += input.steer * 5.2 * dt;
+    lat = lateralVelocityStep({
+      lateral: lat, dt, steering: s.spinOut ? 0 : input.steer,
+      drifting: s.drifting, isPlayer: kart.isPlayer,
+      gripMode: kart._gripMode, normalGrip: P.lateralGrip,
+    });
     kart._latVel = lat;
 
     // ---- integrate position ---------------------------------------------------
