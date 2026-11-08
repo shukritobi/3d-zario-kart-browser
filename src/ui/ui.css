@@ -2429,3 +2429,98 @@ html, body {
   .sk3d-menu-card .sk3d-logo-sub {display:none!important}
   .sk3d-menu-card > .sk3d-current-pick{font-size:10px!important}
 }
+
+
+/* Zario HUD v4: preserve the central roadway, not three columns of dials. */
+@media (pointer:coarse) and (orientation:landscape){
+  .sk3d-hud .sk3d-hud-top{
+    top:calc(7px + env(safe-area-inset-top,0px));
+    left:calc(8px + env(safe-area-inset-left,0px));
+    right:calc(8px + env(safe-area-inset-right,0px));
+    gap:5px;
+  }
+  .sk3d-hud .sk3d-hud-left,.sk3d-hud .sk3d-hud-right{
+    gap:5px;align-items:flex-start
+  }
+  .sk3d-hud .sk3d-hud-right{margin-right:0}
+  .sk3d-hud .sk3d-chip{
+    box-shadow:0 2px 7px #06102660;border-width:1px;border-radius:11px;
+  }
+  .sk3d-hud .sk3d-lap{padding:4px 7px;gap:3px}
+  .sk3d-hud .sk3d-lap-text{font-size:clamp(11px,2.8vh,15px)}
+  .sk3d-hud .sk3d-lap-bar{width:55px;height:5px;border-width:1px}
+  .sk3d-hud .sk3d-time{padding:7px 9px;font-size:clamp(11px,2.6vh,14px)}
+  .sk3d-hud .sk3d-coins{padding:7px 8px!important;font-size:clamp(11px,2.7vh,14px)!important}
+  .sk3d-hud .sk3d-minimap{
+    width:clamp(62px,13vh,82px)!important;height:clamp(62px,13vh,82px)!important;
+    padding:3px!important;flex:none;
+  }
+  .sk3d-hud.sk3d-overlay .sk3d-hud-bottom{
+    position:absolute!important;inset:0!important;bottom:auto!important;
+    display:block!important;pointer-events:none!important;
+  }
+  .sk3d-hud .sk3d-hud-bottom-left{
+    position:absolute;top:clamp(71px,16vh,95px);
+    left:calc(8px + env(safe-area-inset-left,0px));
+    display:flex;flex-direction:row-reverse;align-items:center;gap:6px;
+    pointer-events:none;
+  }
+  .sk3d-hud .sk3d-item-wrap{display:flex;flex-direction:row;align-items:center;gap:4px}
+  .sk3d-hud .sk3d-item-slot{
+    width:clamp(44px,10.5vh,56px)!important;
+    height:clamp(44px,10.5vh,56px)!important;
+    font-size:clamp(20px,5.3vh,30px);
+    border-width:2px;border-radius:11px;padding:2px;
+  }
+  .sk3d-hud .sk3d-item2-slot{
+    width:clamp(33px,8.5vh,43px)!important;
+    height:clamp(33px,8.5vh,43px)!important;
+    font-size:clamp(17px,4.6vh,24px)!important;
+  }
+  .sk3d-hud .sk3d-item-label,.sk3d-hud .sk3d-item-name{display:none!important}
+  .sk3d-hud .sk3d-position{
+    min-width:clamp(55px,12vh,72px)!important;
+    min-height:clamp(56px,13vh,76px)!important;
+    font-size:clamp(25px,6vh,37px)!important;
+    padding:4px!important;line-height:.95;border-radius:13px;
+    box-shadow:0 3px 9px #04101b55;
+  }
+  .sk3d-hud .sk3d-position-player{font-size:9px;letter-spacing:.07em}
+  .sk3d-hud .sk3d-hud-bottom-right{
+    position:absolute;right:calc(9px + env(safe-area-inset-right,0px));
+    top:clamp(83px,17vh,112px);
+    display:flex;flex-direction:column;align-items:center;gap:6px;
+  }
+  .sk3d-hud .sk3d-speedo{
+    width:clamp(76px,20vh,102px)!important;
+    height:clamp(76px,20vh,102px)!important;
+    border-width:2px;box-shadow:0 2px 12px #010d2450;
+  }
+  .sk3d-hud .sk3d-speedo-dial,.sk3d-hud .sk3d-speedo-svg{
+    width:100%!important;height:100%!important;
+  }
+  .sk3d-hud .sk3d-speedo-value{
+    font-size:clamp(18px,5vh,28px)!important;text-shadow:0 2px 4px #000b;
+  }
+  .sk3d-hud .sk3d-speedo-unit{font-size:9px!important;letter-spacing:.05em}
+  .sk3d-hud .sk3d-speedo-needle{height:37%;width:3px;margin-left:-1.5px}
+  .sk3d-hud .sk3d-speedo-hub{width:10px;height:10px;border-width:2px}
+  .sk3d-hud .sk3d-drift-meter{width:80px;height:9px}
+  .sk3d-hud .sk3d-route-cue{
+    top:calc(7px + env(safe-area-inset-top,0px));
+    min-height:29px;padding:4px 9px;gap:5px;
+    font-size:11px;letter-spacing:.04em;
+    background:rgba(19,30,50,.76);border-width:1px;box-shadow:0 2px 8px #050f2560;
+  }
+  .sk3d-hud .sk3d-route-cue-arrow{font-size:16px}
+  .sk3d-hud .sk3d-toast{
+    top:48px!important;bottom:auto!important;
+    left:50%;right:auto!important;max-width:42vw;
+    font-size:13px;padding:5px 11px;border-width:1px;
+  }
+}
+@media(pointer:coarse) and (orientation:landscape) and (max-height:335px) {
+  .sk3d-hud .sk3d-hud-bottom-left{top:56px!important}
+  .sk3d-hud .sk3d-hud-bottom-right{top:67px!important}
+  .sk3d-hud .sk3d-route-cue{top:42px!important}
+}

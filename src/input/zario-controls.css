@@ -62,3 +62,34 @@ body .zario-settings-panel .zario-controls button{
 }
 .zario-settings-panel .zario-controls button[hidden]{display:none!important}
 body .zario-settings-panel .zario-controls button.active{background:#d7ecff!important;color:#1a3051}
+
+
+/* Touch controls keep thumb targets in bottom corners, not HUD territory.
+   Higher specificity than old tablet overrides with 170px HUD lift. */
+@media (pointer:coarse) and (orientation:landscape) {
+  .sk3d-touch.sk3d-touch .sk3d-touch-btn{
+    width:clamp(56px,15vh,74px)!important;
+    height:clamp(56px,15vh,74px)!important;
+  }
+  .sk3d-touch.sk3d-touch .sk3d-touch-left{
+    left:calc(10px + env(safe-area-inset-left,0px))!important;
+    bottom:calc(12px + env(safe-area-inset-bottom,0px))!important;
+  }
+  .sk3d-touch.sk3d-touch .sk3d-touch-right{
+    left:calc(17px + clamp(56px,15vh,74px) + env(safe-area-inset-left,0px))!important;
+    bottom:calc(12px + env(safe-area-inset-bottom,0px))!important;
+  }
+  .sk3d-touch.sk3d-touch .sk3d-touch-item{
+    right:calc(9px + env(safe-area-inset-right,0px))!important;
+    bottom:calc(10px + env(safe-area-inset-bottom,0px))!important;
+  }
+  .sk3d-touch.sk3d-touch .sk3d-touch-drift{
+    right:calc(17px + clamp(56px,15vh,74px) + env(safe-area-inset-right,0px))!important;
+    bottom:calc(10px + env(safe-area-inset-bottom,0px))!important;
+  }
+  .sk3d-touch.sk3d-touch .sk3d-touch-pause{
+    top:clamp(60px,13vh,84px)!important;
+    left:calc(8px + env(safe-area-inset-left,0px))!important;
+    width:38px!important;height:38px!important;font-size:18px!important;
+  }
+}
