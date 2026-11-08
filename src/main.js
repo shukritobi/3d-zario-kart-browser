@@ -238,6 +238,26 @@ if (advancedSettings) {
   heading.className = 'zario-input-heading';
   heading.textContent = 'STEERING & CONTROLLER';
   advancedSettings.append(heading, zarioControls.element);
+  // On iPhone, a visible user gesture is the reliable WebAudio unlock path.
+  // Give players a small direct way to retry sound without leaving the page.
+  const soundTest = document.createElement('button');
+  soundTest.type = 'button';
+  soundTest.className = 'sk3d-btn zario-test-sound';
+  soundTest.textContent = '🔊 TEST SOUND';
+  soundTest.setAttribute('aria-label', 'Play a test sound and retry mobile audio');
+  soundTest.style.cssText = 'align-self:center;min-height:44px;padding:8px 24px;background:#235c85;color:#fff;font:800 13px system-ui;letter-spacing:.08em';
+  soundTest.addEventListener('click', () => {
+    audio.init();
+    audio.resume();
+    if (audio.muted) {
+      soundTest.textContent = '🔇 SOUND IS MUTED';
+    } else {
+      audio.play('uiSelect', {volume:0.85});
+      const state=audio.diagnostics().state;
+      soundTest.textContent = state === 'running' ? '🔊 SOUND PLAYING' : '🔊 RETRY AUDIO';
+    }
+  });
+  advancedSettings.append(soundTest);
 }
 // No floating gyroscope/grip buttons during races: reserve the lower
 // 30% for the steering and item buttons alone.
