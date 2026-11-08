@@ -60,3 +60,21 @@ test('upcoming turns use metric look-ahead with consistent LEFT and RIGHT signs'
   assert.equal(computeUpcomingTurn(mk(1),.1,200,Math.PI,22),null);
   assert.equal(computeUpcomingTurn(mk(1),.1,200,0,0),null);
 });
+
+
+test('three lap checkpoints prevent a second lap three seconds into the race',async()=>{
+  const {advanceLapCheckpoint}=await import('../../src/entities/lapCheckpoints.js');
+  let stage=0,completed=0,last=0;
+  const visit=p=>{const s=advanceLapCheckpoint(stage,last,p,true,18);stage=s.stage;last=p;if(s.completed)completed++};
+  visit(.96);visit(.04); // start grid jitters across seam, no lap
+  assert.equal(completed,0);
+  visit(.54);visit(.94);visit(.03); // skipped 1/4 checkpoint
+  assert.equal(completed,0);
+  visit(.26);visit(.51);visit(.77);visit(.93);visit(.04);
+  assert.equal(completed,1);
+  visit(.93);visit(.05);
+  assert.equal(completed,1); // no repeated seam exploit
+  stage=0;
+  let g=advanceLapCheckpoint(stage,.9,.03,true,0);
+  assert.equal(g.completed,false);
+});

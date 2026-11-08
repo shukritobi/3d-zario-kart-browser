@@ -177,6 +177,7 @@ export class Kart {
     this._airTime = 0;
     this._nudgeVel = new THREE.Vector3();
     this._lastProgress = 0;
+    this._lapCheckpoint = 0;
     this._sampleIndex = 0;
     this._samples = null;
     this._prevY = 0;
@@ -1856,7 +1857,8 @@ export class Kart {
     this._boostVisPrev = false; // AUDIT: no stale boost sparkle on restart
     this._driftTier = 0;
     this._lineAcc = 0;
-    this._lastProgress = 0; // avoids a phantom lap on restart
+    this._lastProgress = 0;
+    this._lapCheckpoint = 0; // avoids a phantom lap on restart
     this._controls = { steer: 0, throttle: false, brake: false, drift: false, useItem: false, swapItem: false };
     this._swapWasDown = false;
     this._steerTarget = 0;
@@ -2028,6 +2030,7 @@ export class Kart {
     this._airTime = 0;
     this._nudgeVel.set(0, 0, 0);
     this._lastProgress = 0;
+    this._lapCheckpoint = 0;
     this._bounce = 0;
     this._finishActive = false; // AUDIT r7: no stale finish celebration
     this._boostVisPrev = false; // AUDIT: no stale boost sparkle on reset

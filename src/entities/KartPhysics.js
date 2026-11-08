@@ -23,6 +23,7 @@ import { lateralVelocityStep, playerDriftSteerRate } from './handling.js';
 // AUDIT r18-FIX (gameplay auditor): terrain now rolls ±5m beyond the
 // corridor — off-road karts must ride it or they bury/float on the hills.
 import { terrainHeight } from '../track/TrackBuilder.js';
+import { advanceLapCheckpoint } from './lapCheckpoints.js';
 
 const SAMPLES = 384; // long tracks: maintain <=4m nearest-sample spacing // points around the loop for nearest-sample search
 
@@ -227,23 +228,18 @@ function updateDrift(kart, input, dt, speedAbs) {
 }
 
 function updateLap(kart, near) {
-  const s = kart.state;
-  const p = s.progress01;
-  const last = kart._lastProgress;
-  if (last > 0.85 && p < 0.15) {
-    // crossed the seam forward — check we're heading along startLine.direction
-    _fwd.set(Math.sin(s.heading), 0, Math.cos(s.heading));
-    if (_fwd.dot(kart._startDir) > 0.35 && !kart.finished) {
-      s.lap += 1;
-      // AUDIT r4: lap-split hook — main.js times the lap and feeds the HUD
-      // (current/best lap chip + new-best flash; MK8D consistency feedback).
-      kart._onLap?.({ lap: s.lap });
-    }
+  const s=kart.state,p=near.progress01;
+  const facing=_fwd.set(Math.sin(s.heading),0,Math.cos(s.heading));
+  const aligned=facing.dot(kart._startDir)>0.35;
+  const result=advanceLapCheckpoint(kart._lapCheckpoint||0,kart._lastProgress,p,aligned,Math.abs(s.speed));
+  kart._lapCheckpoint=result.stage;
+  kart._lastProgress=p;
+  if(result.completed&&!kart.finished){
+    s.lap+=1;
+    kart._onLap?.({lap:s.lap});
   }
-  kart._lastProgress = p;
 }
 
-/** Local 2D heading unit vector from a kart's state heading (no THREE alloc). */
 function heading2d(kart) {
   const h = kart.state.heading;
   return { x: Math.sin(h), z: Math.cos(h) };
