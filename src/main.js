@@ -5,6 +5,8 @@
  * keyboard input and the ?demo cinematic autopilot used by visual QA.
  */
 import { autoInstancing } from './perf/instancing.js';
+import { enterLandscape } from './ui/mobileLandscape.js';
+if (navigator.maxTouchPoints > 0 || matchMedia('(pointer: coarse)').matches) document.body.classList.add('zario-mobile-stage');
 import * as THREE from 'three';
 import { CONFIG } from './config.js';
 import { createScene } from './render/SceneManager.js';
@@ -838,6 +840,7 @@ function scheduleDeferredKartDisposals() {
 // in one task. Schedule it after the menu paint so the button can acknowledge
 // the click; the heavy body remains exactly once and double-clicks are ignored.
 function startRace() {
+  enterLandscape();
   if (startRacePending) return;
   startRacePending = true;
   setTimeout(() => {

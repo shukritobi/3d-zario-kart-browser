@@ -4,6 +4,7 @@
  */
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
+import {gameSize} from '../ui/mobileLandscape.js';
 import { createQualityProfile, createCapabilityProbe, qualityReport } from './VisualQualityProfile.js';
 
 export function createScene(container) {
@@ -18,7 +19,8 @@ export function createScene(container) {
   // One policy drives DPR/shadows/postfx/world density. `?quality=` remains
   // an explicit override for QA and real-device comparison.
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, qualityProfile.maxPixelRatio));
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  const initialSize = gameSize(container);
+  renderer.setSize(initialSize.width, initialSize.height);
   renderer.userData ||= {};
   renderer.userData.qualityProfile = qualityProfile;
   window.__sk3dQualityProfile = qualityProfile;
@@ -41,11 +43,14 @@ export function createScene(container) {
   renderer.toneMappingExposure = 1.0;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   function resize() {
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    camera.aspect = window.innerWidth / Math.max(1, window.innerHeight);
+    const size = gameSize(container);
+    renderer.setSize(size.width, size.height);
+    camera.aspect = size.width / Math.max(1, size.height);
     camera.updateProjectionMatrix();
   }
   window.addEventListener('resize', resize);
+  window.visualViewport?.addEventListener?.('resize', resize);
+  screen.orientation?.addEventListener?.('change', () => requestAnimationFrame(resize));
   container.appendChild(renderer.domElement);
 
   // AUDIT (Jarvis QA loop 2026-08-11): WebGL context loss froze the game
@@ -78,7 +83,7 @@ export function createScene(container) {
 
   const camera = new THREE.PerspectiveCamera(
     CONFIG.camera.fov,
-    window.innerWidth / window.innerHeight,
+    initialSize.width / Math.max(1, initialSize.height),
     0.1,
     2000
   );

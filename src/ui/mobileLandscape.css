@@ -1,0 +1,13 @@
+/* Physically locking iOS orientation is not supported in web browsers.
+   Rotate the whole stage to a virtual landscape view when held portrait. */
+@media(orientation:portrait){
+  body.zario-mobile-stage {
+    position:fixed!important;left:50%!important;top:50%!important;
+    width:100dvh!important;height:100dvw!important;
+    transform:translate(-50%,-50%) rotate(90deg)!important;
+    transform-origin:50% 50%!important;overflow:hidden!important;
+    touch-action:manipulation;
+  }
+  body.zario-mobile-stage #app { width:100%;height:100%; }
+  body.zario-mobile-stage .zario-landscape-hint{display:none!important}
+}
