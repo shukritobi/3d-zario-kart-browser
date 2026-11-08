@@ -3,12 +3,17 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+# Source pushes often land within minutes during development. Retire outdated
+# browser tests so the newest code gets a GPU/software-render slot promptly.
+concurrency:
+  group: zario-mobile-smoke-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
   mobile-smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
