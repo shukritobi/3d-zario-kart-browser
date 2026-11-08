@@ -78,3 +78,20 @@ test('three lap checkpoints prevent a second lap three seconds into the race',as
   let g=advanceLapCheckpoint(stage,.9,.03,true,0);
   assert.equal(g.completed,false);
 });
+
+
+test('rescue bounds follow the actual 1.3km track and never teleport on valid road',async()=>{
+  const {computeTrackBounds,isOutsideTrackBounds,sampleIndexAtProgress}=
+    await import('../../src/game/trackBounds.js');
+  const curve=new THREE.CatmullRomCurve3(SKY_PATH,true,'catmullrom',0.5);
+  const bounds=computeTrackBounds(curve);
+  assert.ok(bounds.maxX>150&&bounds.maxZ>150);
+  for(let i=0;i<240;i++){
+    const p=curve.getPointAt(i/240);
+    assert.equal(isOutsideTrackBounds(p,bounds),false,'valid path teleported at '+i);
+  }
+  assert.equal(isOutsideTrackBounds({x:bounds.maxX+1,z:0},bounds),true);
+  assert.equal(isOutsideTrackBounds({x:bounds.minX-1,z:0},bounds),true);
+  assert.equal(sampleIndexAtProgress(.5,384),192);
+  assert.equal(sampleIndexAtProgress(.95,384),365);
+});

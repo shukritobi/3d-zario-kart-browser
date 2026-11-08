@@ -9,6 +9,7 @@
  */
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
+import { computeTrackBounds, isOutsideTrackBounds, sampleIndexAtProgress } from './trackBounds.js';
 import { Kart } from '../entities/Kart.js';
 import { AIController } from '../entities/AIController.js';
 import { createItemBoxes } from '../entities/ItemBox.js';
@@ -210,6 +211,7 @@ export class RaceManager {
    */
   init({ track, playerKart, aiKarts, itemBoxes, audio, particles }) {
     this.track = track || null;
+    this._trackBounds = track?.path ? computeTrackBounds(track.path) : null;
     this.player = playerKart || null;
     this.karts = playerKart ? [playerKart, ...(aiKarts || [])] : [...(aiKarts || [])];
     this.audio = audio || null;
@@ -440,7 +442,7 @@ export class RaceManager {
       // drive away forever (SIM seed 2918: z went to -126, v=4.6 never
       // triggered the <3 m/s stuck rescue). Any kart beyond the world bounds
       // gets the Lakitu IMMEDIATELY (1s grace), no speed threshold.
-      const oob = Math.abs(st.position?.x || 0) > 95 || Math.abs(st.position?.z || 0) > 62;
+      const oob = isOutsideTrackBounds(st.position, this._trackBounds);
       if (oob) {
         kart._stuckT = (kart._stuckT || 0) + dt;
         if (kart._stuckT >= 1) {
@@ -453,7 +455,7 @@ export class RaceManager {
             st.vY = 3.5;
             st.spinOut = false;
             if (typeof st.progress01 === 'number') {
-              kart._sampleIndex = Math.min(191, Math.max(0, Math.round(st.progress01 * 192)));
+              kart._sampleIndex = sampleIndexAtProgress(st.progress01, kart._samples?.pos?.length || 384);
             }
             kart._stuckT = 0;
             // R25: same MK8D semantics as the stuck rescue below — a rescued
@@ -480,7 +482,7 @@ export class RaceManager {
             // steering anchor wobbles). progress01 is arc-length fraction →
             // index on the 192-sample arc-uniform lattice.
             if (typeof st.progress01 === 'number') {
-              kart._sampleIndex = Math.min(191, Math.max(0, Math.round(st.progress01 * 192)));
+              kart._sampleIndex = sampleIndexAtProgress(st.progress01, kart._samples?.pos?.length || 384);
             }
             st.vY = 3.5; // the little pop the Lakitu gives you
             st.spinOut = false;
