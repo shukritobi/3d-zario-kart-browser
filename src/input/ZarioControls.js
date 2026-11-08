@@ -154,10 +154,15 @@ export class ZarioControls {
     else steer = Math.sign(steer) * (Math.abs(steer) - 0.12) / 0.88;
     return {
       steer,
-      throttle: clamp(Number(pad.buttons[7]?.value) || (pressed(0) ? 1 : 0), 0, 1),
+      throttle: clamp(Number(pad.buttons[7]?.value) || (pressed(3) ? 1 : 0), 0, 1),
       brake: pressed(6),
       drift: pressed(4) || pressed(5) || pressed(0),
     };
+  }
+
+  getSteer() {
+    // Don't lock the kart into a turn if Safari suspends motion events.
+    return this.tiltEnabled && this.lastSampleTime && performance.now() - this.lastSampleTime < 1200 ? this.steer : 0;
   }
 
   status() {

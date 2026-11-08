@@ -1286,7 +1286,7 @@ loop.start((dt, t) => {
       // Player input
       if (!DEMO) {
         readKeyboardInput();
-        let steer = zarioControls.gamepadActive ? input.steer : (zarioControls.tiltEnabled ? zarioControls.steer : (isTouchMode() ? touchSteer : input.steer));
+        let steer = zarioControls.gamepadActive ? input.steer : (zarioControls.tiltEnabled ? zarioControls.getSteer() : (isTouchMode() ? touchSteer : input.steer));
         // Steer assist (accessibility, audit r3): soft pull toward the track
         // centerline (same signed-error math as AIController). It fades out as
         // the player's own input grows, so it nudges but never fights them.
