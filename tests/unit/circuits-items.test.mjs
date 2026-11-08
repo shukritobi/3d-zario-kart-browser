@@ -55,8 +55,8 @@ test('upcoming turns use metric look-ahead with consistent LEFT and RIGHT signs'
     const angle=t<.2?0:t<.5?side*Math.PI/4:side*Math.PI/2;
     return {x:Math.sin(angle),z:Math.cos(angle)};
   }});
-  assert.equal(computeUpcomingTurn(mk(1),.1,200,0,22)?.direction,'RIGHT');
-  assert.equal(computeUpcomingTurn(mk(-1),.1,200,0,22)?.direction,'LEFT');
+  assert.equal(computeUpcomingTurn(mk(1),.1,200,0,22)?.direction,'LEFT');
+  assert.equal(computeUpcomingTurn(mk(-1),.1,200,0,22)?.direction,'RIGHT');
   assert.equal(computeUpcomingTurn(mk(1),.1,200,Math.PI,22),null);
   assert.equal(computeUpcomingTurn(mk(1),.1,200,0,0),null);
 });

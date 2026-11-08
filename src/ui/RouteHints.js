@@ -1,6 +1,6 @@
 /**
  * Road-relative turn preview. Distances are metres, not a fractional lap.
- * From travel +Z, a turn towards +X is RIGHT.
+ * For a rear chase camera facing +Z, screen-right is world -X, so +X is LEFT.
  */
 export function computeUpcomingTurn(path, progress01, length, heading, speed) {
   if (!path || !Number.isFinite(progress01) || !(length>0) || !(speed>5)) return null;
@@ -16,7 +16,7 @@ export function computeUpcomingTurn(path, progress01, length, heading, speed) {
   if(Math.abs(selected)<0.27) return null;
   const fwd={x:Math.sin(heading||0),z:Math.cos(heading||0)};
   if(dot(a,fwd)<0.18)return null;
-  return {direction:selected>0?'LEFT':'RIGHT',
+  return {direction:selected<0?'LEFT':'RIGHT',
     turnDegrees:selected*180/Math.PI,
     distance:Math.abs(early)>=0.19?16:35};
 }
