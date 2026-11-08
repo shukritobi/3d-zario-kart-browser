@@ -1,0 +1,18 @@
+{
+  "name": "zario-kart",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Zario Kart — A cartoon arcade kart racer with AAA-grade visuals, power-ups and procedural audio, built on Three.js. Playable with keyboard or touch.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "three": "^0.164.0"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0"
+  }
+}
