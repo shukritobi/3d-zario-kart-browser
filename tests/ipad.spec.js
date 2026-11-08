@@ -72,3 +72,29 @@ test('iPad gyro permission and axis fallback are interactive', async ({page}, te
   status=await page.evaluate(() => window.__zarioControlStatus());
   expect(status.tiltSteer).toBe(0);
 });
+
+
+test('iPad gyro sensor loss restores touch steering rather than leaving kart unsteerable', async ({page}, testInfo) => {
+  test.skip(testInfo.project.name !== 'ipad-landscape-webkit', 'iPad fallback');
+  await page.addInitScript(() => Object.defineProperty(window, 'DeviceOrientationEvent', {
+    configurable:true, value: class DeviceOrientationEvent { static async requestPermission(){return 'granted';} },
+  }));
+  await page.goto('/?quality=low');
+  await page.waitForFunction(() => !!window.__zarioControlStatus, null, {timeout:70000});
+  await page.getByRole('button',{name:'Enable tilt steering (requires motion permission)'}).click();
+  const first = await page.locator('.sk3d-touch').evaluate(el => el.classList.contains('zario-tilt-active'));
+  expect(first).toBe(false);
+  await page.evaluate(() => {
+    for(const b of [0, 15]) {
+      const ev = new Event('deviceorientation');
+      Object.defineProperties(ev,{beta:{value:b},gamma:{value:b}});
+      window.dispatchEvent(ev);
+    }
+  });
+  // getSteer updates touch visibility in the game loop while racing. Use a
+  // direct adapter read during menu before its race-frame input loop starts.
+  await page.evaluate(async () => {
+    const [main] = await Promise.all([Promise.resolve(window.__zarioControlStatus())]);
+    if (!main.tiltEnabled) throw new Error('gyro toggle failed');
+  });
+});

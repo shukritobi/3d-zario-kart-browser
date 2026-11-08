@@ -49,6 +49,7 @@ export class ZarioControls {
     this.updateLabels();
     this.element.append(this.toggle, this.recenterButton, this.axisButton, this.invertButton, this.gripButton, this.statusButton);
     document.body.appendChild(this.element);
+    if (navigator.maxTouchPoints > 0) document.body.classList.add('zario-touchscreen');
 
     this.hint = document.createElement('div');
     this.hint.className = 'zario-landscape-hint';
@@ -101,6 +102,7 @@ export class ZarioControls {
   }
 
   resetTilt() {
+    this.touchRoot?.classList.remove('zario-tilt-active');
     this.neutral = null;
     this.lastRaw = null;
     this.lastSampleTime = 0;
@@ -127,7 +129,12 @@ export class ZarioControls {
     this.lastRaw = raw;
     this.lastSampleTime = performance.now();
     if (!this.tiltEnabled) return;
-    if (this.neutral === null) { this.neutral = raw; return; }
+    if (this.neutral === null) {
+      this.neutral = raw;
+      // Only hide the touch arrows after real sensor data is available.
+      this.touchRoot?.classList.add('zario-tilt-active');
+      return;
+    }
     // Relative calibration removes dependence on how the player holds the phone.
     const target = tiltToSteer(raw, this.neutral);
     // Avoid slow steering tails: reactive input with a little sensor noise filtering.
@@ -164,7 +171,7 @@ export class ZarioControls {
       this.toggle.textContent = 'GYRO ON ✓';
       this.recenterButton.hidden = false;
       this.axisButton.hidden = false;
-      this.touchRoot?.classList.add('zario-tilt-active');
+      this.touchRoot?.classList.remove('zario-tilt-active');
     } catch (err) {
       console.info('[Zario Kart] tilt unavailable, touch remains active:', err?.message || err);
       this.toggle.textContent = 'GYRO DENIED';
@@ -212,12 +219,15 @@ export class ZarioControls {
   }
 
   getSteer() {
-    // Never leave the kart steering into a wall when sensor events suspend.
+    // Safari pauses sensor events when switching orientation / entering menus.
+    // If motion data is stale, immediately restore the touch buttons.
     if (!this.tiltEnabled || !this.lastSampleTime ||
         performance.now() - this.lastSampleTime > 650) {
       this.steer = 0;
-      return 0;
+      this.touchRoot?.classList.remove('zario-tilt-active');
+      return null;
     }
+    this.touchRoot?.classList.add('zario-tilt-active');
     return this.steer;
   }
 

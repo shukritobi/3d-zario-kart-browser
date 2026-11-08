@@ -585,7 +585,7 @@ function setTouchSteer(v) {
 }
 
 function isTouchMode() {
-  return matchMedia('(pointer: coarse)').matches || window.innerWidth <= 768;
+  return matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0 || window.innerWidth <= 768;
 }
 
 function readKeyboardInput() {
@@ -1288,7 +1288,8 @@ loop.start((dt, t) => {
       // Player input
       if (!DEMO) {
         readKeyboardInput();
-        let steer = zarioControls.gamepadActive ? input.steer : (zarioControls.tiltEnabled ? zarioControls.getSteer() : (isTouchMode() ? touchSteer : input.steer));
+        const gyroSteer = zarioControls.tiltEnabled ? zarioControls.getSteer() : null;
+        let steer = zarioControls.gamepadActive ? input.steer : (gyroSteer !== null ? gyroSteer : (isTouchMode() ? touchSteer : input.steer));
         steer = zarioControls.applySteer(steer);
         zarioControls.showSteer(steer);
         if (playerKart) playerKart._gripMode = zarioControls.gripMode;

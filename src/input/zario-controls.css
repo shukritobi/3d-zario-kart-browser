@@ -25,3 +25,15 @@
   .zario-controls button{font-size:9px;padding:7px 10px;min-height:30px}
   .zario-controls{max-width:66vw}
 }
+
+/* An iPad with a trackpad may advertise pointer:fine while still being a
+   touchscreen. JS adds this class using maxTouchPoints > 0. */
+body.zario-touchscreen .zario-controls{display:flex}
+@media(min-width:960px) and (orientation:landscape){
+  body.zario-touchscreen .sk3d-touch-btn{width:86px!important;height:86px!important;bottom:calc(28px + env(safe-area-inset-bottom, 0px))!important}
+  body.zario-touchscreen .sk3d-touch-left{left:calc(28px + env(safe-area-inset-left, 0px))!important}
+  body.zario-touchscreen .sk3d-touch-right{left:calc(126px + env(safe-area-inset-left, 0px))!important}
+  body.zario-touchscreen .sk3d-touch-item{right:calc(28px + env(safe-area-inset-right, 0px))!important}
+  body.zario-touchscreen .sk3d-touch-drift{right:calc(126px + env(safe-area-inset-right, 0px))!important}
+  body.zario-touchscreen .sk3d-hud-bottom{bottom:170px!important}
+}

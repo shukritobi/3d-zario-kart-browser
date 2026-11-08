@@ -92,7 +92,8 @@ export class TouchControls {
   /** @returns {boolean} true when the device likely needs touch controls. */
   isTouchDevice() {
     return (
-      (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches)
+      (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches) ||
+      (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0)
     );
   }
 
