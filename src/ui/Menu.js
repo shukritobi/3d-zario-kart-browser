@@ -21,6 +21,7 @@
  */
 import { CONFIG } from '../config.js';
 import { TRACK_PATH, CITY_PATH } from '../track/TrackBuilder.js';
+import { CANYON_PATH, SKY_PATH } from '../track/ExtraTracks.js';
 import './ui.css';
 
 /** [action, keyboard, touch] rows for the "How to Play" table. */
@@ -47,7 +48,9 @@ function toHex(value) {
  */
 const TRACKS = [
   { id: 1, name: 'Meadow Circuit', icon: '🌇', desc: 'Rolling sunny hills, sweeping bends and two launch ramps.', points: TRACK_PATH },
-  { id: 2, name: 'Neon City', icon: '🌆', desc: 'Tight urban loop — long straights and hairpins under the neon.', points: CITY_PATH },
+  { id: 2, name: 'Neon City', icon: '🌆', desc: 'Long night race across wet neon boulevards and sharp switchbacks.', points: CITY_PATH },
+  { id: 3, name: 'Sunset Canyon', icon: '🌅', desc: 'Golden cliffs, S-bends, aerial jumps and festival arches.', points: CANYON_PATH },
+  { id: 4, name: 'Cloudtop Garden', icon: '🌈', desc: 'Pastel sky gardens, swooping curves and colorful launch gates.', points: SKY_PATH },
 ];
 
 /**
@@ -292,7 +295,7 @@ export class Menu {
     this.selectedColor = CONFIG.kart.playerColors[0];
     this.selectedChar = 0; // driver index into CONFIG.kart.characters
     // Track id matches the ?track= query param (2 = Neon City).
-    this.trackId = new URLSearchParams(location.search).get('track') === '2' ? 2 : 1;
+    this.trackId = [1,2,3,4].includes(Number(new URLSearchParams(location.search).get('track'))) ? Number(new URLSearchParams(location.search).get('track')) : 1;
     // Difficulty/accessibility state (audit r3): restored from localStorage.
     this.cc = CONFIG.cc.default;
     this.autoAccel = CONFIG.assist.autoAccelerate;
@@ -673,7 +676,7 @@ export class Menu {
       if (localStorage.getItem('sk3d.autoAccel') === '1') this.autoAccel = true;
       if (localStorage.getItem('sk3d.steerAssist') === '1') this.steerAssist = true;
       const savedTrack = Number(localStorage.getItem('sk3d.track'));
-      if (savedTrack === 1 || savedTrack === 2) this.trackId = savedTrack;
+      if ([1,2,3,4].includes(savedTrack)) this.trackId = savedTrack;
     } catch { /* private mode */ }
     for (const b of this.ccBtns) {
       const sel = Number(b.dataset.cc) === this.cc;
@@ -787,7 +790,7 @@ export class Menu {
     window.__sk3dTrack = this.trackId;
     this.saveSettings();
     setTimeout(() => {
-      location.search = this.trackId === 2 ? '?track=2' : '';
+      location.search = '?track=' + this.trackId;
     }, 350);
   }
 

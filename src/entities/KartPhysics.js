@@ -24,7 +24,7 @@ import { lateralVelocityStep, playerDriftSteerRate } from './handling.js';
 // corridor — off-road karts must ride it or they bury/float on the hills.
 import { terrainHeight } from '../track/TrackBuilder.js';
 
-const SAMPLES = 192; // points around the loop for nearest-sample search
+const SAMPLES = 384; // long tracks: maintain <=4m nearest-sample spacing // points around the loop for nearest-sample search
 
 const _fwd = new THREE.Vector3();
 const _right = new THREE.Vector3();

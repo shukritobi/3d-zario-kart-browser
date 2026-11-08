@@ -13,6 +13,7 @@ import { createScene } from './render/SceneManager.js';
 import { GameLoop } from './game/GameLoop.js';
 import { setState, getState, STATES, onStateChange } from './game/GameState.js';
 import { buildTrack, TRACK_PATH, CITY_PATH } from './track/TrackBuilder.js';
+import { CANYON_PATH, SKY_PATH } from './track/ExtraTracks.js';
 import { Environment } from './track/Environment.js';
 import { PostFX } from './render/PostFX.js';
 import { AudioManager } from './audio/AudioManager.js';
@@ -52,9 +53,8 @@ let deferredKartDisposals = [];
 // the query param covers the very first load (defaults to the meadow circuit).
 let savedTrackId = 0;
 try { savedTrackId = Number(localStorage.getItem('sk3d.track')); } catch { /* private mode */ }
-const TRACK_ID =
-  Number(window.__sk3dTrack) === 2 || savedTrackId === 2 ||
-  Number(new URLSearchParams(location.search).get('track')) === 2 ? 2 : 1;
+const urlTrack = Number(new URLSearchParams(location.search).get('track'));
+const TRACK_ID = [1,2,3,4].includes(urlTrack) ? urlTrack : [1,2,3,4].includes(savedTrackId) ? savedTrackId : 1;
 bootOverlay.setStage('reading controls', 0.10);
 
 // Difficulty/accessibility (audit r3): the CC selector scales the physics
@@ -66,7 +66,10 @@ const BASE_BOOST_SPEED = CONFIG.physics.boostSpeed;
 const env = new Environment();
 env.trackId = TRACK_ID; // theme hook: 1 = sunny meadow, 2 = neon city
 bootOverlay.setStage('laying the circuit', 0.22);
-const track = buildTrack(scene, TRACK_ID === 2 ? CITY_PATH : TRACK_PATH);
+// Long circuits: place multiple boost clusters throughout each lap.
+CONFIG.track.turboPadTs = [0.13,0.35,0.58,0.82];
+const trackPath = ({1: TRACK_PATH, 2: CITY_PATH, 3: CANYON_PATH, 4: SKY_PATH})[TRACK_ID];
+const track = buildTrack(scene, trackPath, TRACK_ID);
   // MK8 turbo strips breathe (Feco QA 2026-08-12): additive glow overlay pulse.
   const turboGlowMat = (track.turboPads && track.turboPads.glowMat) || null;
 env.buildEnvironment(scene, track); // track passed so props avoid the road
@@ -931,7 +934,7 @@ function startRaceInit() {
       position: r.position,
       kart: r.kart,
       totalTime: r.kart?.totalTime,
-    })), TRACK_ID === 2 ? 'Neon City' : 'Meadow Circuit');
+    })), ({1:'Meadow Circuit',2:'Neon City',3:'Sunset Canyon',4:'Cloudtop Garden'})[TRACK_ID]);
     // Celebration burst as the player crosses the line (art-bible: reward juice).
     if (playerKart && playerKart.state) {
       const p = playerKart.state.position.clone();

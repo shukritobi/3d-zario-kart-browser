@@ -24,6 +24,7 @@ function getDensityMultipliers() {
 }
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
+import { buildThemeLandmarks } from './ThemeLandmarks.js';
 import { toonMaterial, cartoonOutline, roadTexture, cityRoadTexture, dirtTexture, grassTexture, concreteTexture, checkerTexture, bannerCheckerTexture, finishBannerTexture, finishBannerTextureMirrored, turboPadTexture, turboPadChevronTexture, turboPadGlowTexture, arrowTexture, finishLineTexture, neonReflectionTexture } from '../render/Materials.js';
 
 // Control points forming the closed loop (X, Y=elevation, Z).
@@ -41,7 +42,7 @@ const CONTROL_POINTS = [
   [-64, 0.3, 20],
 ];
 
-export const TRACK_PATH = CONTROL_POINTS.map(([x, y, z]) => new THREE.Vector3(x, y, z));
+export const TRACK_PATH = CONTROL_POINTS.map(([x, y, z]) => new THREE.Vector3(x * 2.85, y * 2.1, z * 2.85));
 
 // Track 2 — "NEON CITY": tight urban circuit (long straights + hairpins).
 // Tuned to the same physics (roadWidth, ramp spacing) as Track 1.
@@ -153,7 +154,7 @@ export const CITY_PATH = [
   [-70.0, 0.3, -5.5],
   [-70.0, 0.3, 1.8],
   [-70.0, 0.3, 9.0],
-].map(([x, y, z]) => new THREE.Vector3(x, y, z));
+].map(([x, y, z]) => new THREE.Vector3(x * 2.18, y, z * 2.18));
 
 export function getRoadWidthAt() {
   return CONFIG.track.roadWidth;
@@ -448,8 +449,12 @@ function buildEdgeShadowLine(path, length, neon = false) {
 }
 
 function buildTerrain(path, cityMode = false) {
-  const size = 460;
-  const seg = 72;
+  // Derive terrain area from track extents so long circuits never disappear
+  // beyond the original 460m grass square.
+  const outline=path.getSpacedPoints(140);
+  const edge=outline.reduce((n,p)=>Math.max(n,Math.abs(p.x),Math.abs(p.z)),0);
+  const size=Math.max(460,Math.ceil((edge+65)*2/40)*40);
+  const seg=Math.min(110,Math.max(72,Math.ceil(size/6)));
   const geo = new THREE.PlaneGeometry(size, size, seg, seg);
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
@@ -2157,7 +2162,7 @@ function buildRoadSponsorDecals(path) {
   return group;
 }
 
-export function buildTrack(scene, trackPath = TRACK_PATH) {
+export function buildTrack(scene, trackPath = TRACK_PATH, themeId = 1) {
   const group = new THREE.Group();
 
   // NEON CITY (track 2, ?track=2) restyles the road dark, the kerbs neon and
@@ -2300,6 +2305,7 @@ export function buildTrack(scene, trackPath = TRACK_PATH) {
   const roadDecals = buildRoadSponsorDecals(path);
   if (roadDecals) group.add(roadDecals);
 
+  if (themeId >= 3) group.add(buildThemeLandmarks(path, themeId));
   const dashes = buildLaneDashes(path, length, isCity);
   group.add(dashes);
 
@@ -2318,13 +2324,22 @@ export function buildTrack(scene, trackPath = TRACK_PATH) {
   // ~40m across the rail. New ts sit mid-straights (0.13 = top straight,
   // 0.84 = bottom straight) AND every candidate is curvature-checked
   // (skipped unless the local radius is straight enough).
-  const RAMP_TS = [0.20, 0.57]; // top straight + mid straight (curv ~0)
   const rampT = [];
-  for (const rt of RAMP_TS) {
-    const ta = path.getTangentAt(Math.max(0.001, rt - 0.005));
-    const tb = path.getTangentAt(Math.min(0.999, rt + 0.005));
-    const curv = ta.angleTo(tb) / 0.01; // rad per meter
-    if (curv < 0.03) rampT.push(rt); // straight enough to launch
+  // Measured in radians PER METRE (previous implementation mistakenly used
+  // radians per fractional lap, often rejecting every otherwise valid ramp).
+  const options = themeId >= 3 ? [0.08,0.21,0.36,0.52,0.68,0.84,0.94]
+                               : [0.12,0.27,0.45,0.61,0.79,0.91];
+  const sorted=options.map(t=>{
+    const da=6/length;
+    const a=path.getTangentAt(Math.max(0.001,t-da));
+    const b=path.getTangentAt(Math.min(0.999,t+da));
+    return {t,curvature:a.angleTo(b)/12};
+  }).sort((a,b)=>a.curvature-b.curvature);
+  for (const candidate of sorted) {
+    if (candidate.curvature>=0.038) continue;
+    const apart=rampT.every(t=>Math.min(Math.abs(t-candidate.t),1-Math.abs(t-candidate.t))>0.14);
+    if (apart) rampT.push(candidate.t);
+    if (rampT.length>=3) break;
   }
   const ramps = buildRamps(path, length, rampT);
   for (const r of ramps) {
@@ -2357,12 +2372,12 @@ export function buildTrack(scene, trackPath = TRACK_PATH) {
   scene.add(group);
 
   const waypoints = [];
-  const WAY_COUNT = 90;
+  const WAY_COUNT = Math.max(90, Math.round(length/6));
   for (let i = 0; i < WAY_COUNT; i++) {
     waypoints.push(path.getPointAt(i / WAY_COUNT).clone());
   }
 
-  return { group, path, waypoints, startLine, length, isCity, startLights: gantry.startLights, turboPads: { ts: turbo.ts, points: turbo.points }, ramps };
+  return { group, path, waypoints, startLine, length, isCity, themeId, startLights: gantry.startLights, turboPads: { ts: turbo.ts, points: turbo.points }, ramps };
 }
 
 /**

@@ -371,7 +371,8 @@ export class ItemBox {
  * first corner (the genre's classic), then singles alternating sides.
  * Deterministic jitter keeps spacing organic without RNG.
  */
-export function createItemBoxes(track, count = 12) {
+export function createItemBoxes(track, count = null) {
+  count ??= Math.min(24, Math.max(12, Math.round((track.length || 500) / 65)));
   const boxes = [];
   // Start pair: two boxes across the road on the START STRAIGHT (the old
   // 0.085 sat on the new city's top-left corner apex — AUDIT 2026-08-11).
