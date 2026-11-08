@@ -455,6 +455,9 @@ export class RaceManager {
             st.spinOut = false;
             if (typeof st.progress01 === 'number') {
               kart._sampleIndex = sampleIndexAtProgress(st.progress01, kart._samples?.pos?.length || 384);
+              // A teleport is not a legitimate finish-line crossing.
+              kart._lapCheckpoint = 0;
+              kart._lastProgress = st.progress01;
             }
             kart._stuckT = 0;
             // R25: same MK8D semantics as the stuck rescue below — a rescued
@@ -482,6 +485,9 @@ export class RaceManager {
             // index on the 192-sample arc-uniform lattice.
             if (typeof st.progress01 === 'number') {
               kart._sampleIndex = sampleIndexAtProgress(st.progress01, kart._samples?.pos?.length || 384);
+              // A teleport is not a legitimate finish-line crossing.
+              kart._lapCheckpoint = 0;
+              kart._lastProgress = st.progress01;
             }
             st.vY = 3.5; // the little pop the Lakitu gives you
             st.spinOut = false;
