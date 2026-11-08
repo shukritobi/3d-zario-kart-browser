@@ -24,6 +24,7 @@ import { updateWind } from './render/Materials.js'; // PREMIUM PASS: vento na gr
 import { Menu } from './ui/Menu.js';
 import { HUD } from './ui/HUD.js';
 import { TouchControls } from './ui/TouchControls.js';
+import { ZarioControls } from './input/ZarioControls.js';
 import { signedAngle } from './entities/PowerUp.js'; // steer-assist steering math (shared with AIController)
 import { createBootOverlay } from './ui/BootOverlay.js';
 
@@ -222,6 +223,9 @@ const menu = new Menu({
 });
 menu.restoreMute(); // persisted mute state (audit minor)
 const touch = new TouchControls({ onSteer: setTouchSteer, onItem: () => pressItem(), onPause: togglePause, onDrift: (b) => { touchDrift = b; } });
+const zarioControls = new ZarioControls({ touchRoot: touch.root, onItemDown: pressItem, onItemUp: releaseItem, onPause: togglePause });
+window.__zarioControlStatus = () => zarioControls.status();
+window.__zarioPerformance = () => renderer.userData.qualityReport();
 bootOverlay.setStage('drawing the HUD', 0.82);
 // AUDIT r4: the touch item button only reports presses — wire the release
 // edges here so hold-to-throw-back works on touch too (pointerup/cancel/leave).
@@ -595,6 +599,13 @@ function readKeyboardInput() {
   input.drift = keys.has('ShiftLeft') || keys.has('ShiftRight') || touchDrift;
   input.swapItem = swapQueued;
   swapQueued = false;
+  const pad = zarioControls.pollGamepad();
+  if (pad) {
+    input.steer = pad.steer;
+    input.throttle = pad.throttle;
+    input.brake = pad.brake;
+    input.drift = input.drift || pad.drift;
+  }
 }
 
 function pressItem() {
@@ -1275,7 +1286,7 @@ loop.start((dt, t) => {
       // Player input
       if (!DEMO) {
         readKeyboardInput();
-        let steer = isTouchMode() ? touchSteer : input.steer;
+        let steer = zarioControls.gamepadActive ? input.steer : (zarioControls.tiltEnabled ? zarioControls.steer : (isTouchMode() ? touchSteer : input.steer));
         // Steer assist (accessibility, audit r3): soft pull toward the track
         // centerline (same signed-error math as AIController). It fades out as
         // the player's own input grows, so it nudges but never fights them.
@@ -1296,7 +1307,7 @@ loop.start((dt, t) => {
           }
         }
         // Auto-accelerate (accessibility): keep the gas pinned unless braking.
-        const rawThrottle = isTouchMode() ? 1 : input.throttle || (input.brake ? -1 : 0);
+        const rawThrottle = zarioControls.gamepadActive ? (input.brake ? -1 : input.throttle) : (isTouchMode() ? 1 : input.throttle || (input.brake ? -1 : 0));
         const effThrottle = settings.autoAccel ? (input.brake ? -1 : 1) : rawThrottle;
         // Character stats → physics (audit r3): accel scales throttle input,
         // handling scales steer authority; speed is applied as cruiseSpeed.

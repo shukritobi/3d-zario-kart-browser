@@ -87,6 +87,21 @@ export function createQualityProfile(renderer) {
     // crisp geometry up to 2x without allowing pathological DPR values.
     profile.maxPixelRatio = Math.min(2, Math.max(profile.maxPixelRatio, window.devicePixelRatio || 1));
   }
+  // iPhone Safari is often fill-rate and heat limited. Keep the colorful
+  // material/shader palette, but reduce optional GPU passes first.
+  // ?quality=high|ultra is an explicit test override.
+  const isiOS = /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (isiOS && !queryOverride()) {
+    profile.maxPixelRatio = Math.min(profile.maxPixelRatio, 1.4);
+    profile.shadowMapSize = Math.min(profile.shadowMapSize, 512);
+    profile.shadows = false;
+    profile.bloom = false;
+    profile.colorGrade = false;
+    profile.particleDensity = Math.min(profile.particleDensity, 0.55);
+    profile.foliageDensity = Math.min(profile.foliageDensity, 0.55);
+    profile.textureCap = Math.min(profile.textureCap, 512);
+  }
   profile.maxPixelRatio = clamp(profile.maxPixelRatio, 0.75, 2);
   return Object.freeze(profile);
 }

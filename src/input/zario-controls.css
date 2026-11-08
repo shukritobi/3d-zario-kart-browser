@@ -1,0 +1,8 @@
+.zario-controls{position:fixed;left:50%;bottom:max(9px,env(safe-area-inset-bottom));transform:translateX(-50%);z-index:99990;display:flex;gap:6px;align-items:center;pointer-events:auto;user-select:none;-webkit-user-select:none;font-family:system-ui,sans-serif}
+.zario-controls button{appearance:none;-webkit-appearance:none;border:1px solid rgba(255,255,255,.4);background:rgba(8,20,43,.83);color:#fff;border-radius:999px;font:800 10px/1.2 system-ui,sans-serif;letter-spacing:.065em;padding:9px 13px;min-height:34px;box-shadow:0 3px 13px #06142855;touch-action:manipulation;cursor:pointer}
+.zario-controls button:active,.zario-controls button.active{background:#23b7d9;color:#061326}
+.zario-controls button[hidden]{display:none}
+.zario-tilt-active .sk3d-touch-left,.zario-tilt-active .sk3d-touch-right{display:none!important}
+.zario-landscape-hint{display:none;position:fixed;top:max(5px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);pointer-events:none;z-index:99990;white-space:nowrap;background:rgba(4,15,32,.8);padding:8px 14px;border-radius:16px;color:#fff;font:700 11px system-ui,sans-serif;box-shadow:0 2px 14px #08152833}
+@media(pointer:fine){.zario-controls{display:none}}
+@media(orientation:portrait) and (pointer:coarse){.zario-landscape-hint{display:block}}
