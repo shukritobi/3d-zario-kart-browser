@@ -2539,3 +2539,29 @@ html, body {
   45%{filter:drop-shadow(0 0 12px #ffdc65);box-shadow:0 0 22px 7px #ffdc658c}
   100%{filter:none;box-shadow:none}
 }
+
+/* Settings header stays operable during a full-panel scroll and under
+   software-rendered mobile Chromium. The close target never shrinks. */
+.sk3d-menu-card .zario-settings-panel > .zario-settings-heading {
+  position:sticky!important;
+  top:-12px!important;
+  z-index:100!important;
+  flex:0 0 auto;
+  min-height:48px;
+  width:100%;
+  isolation:isolate;
+  pointer-events:auto!important;
+}
+.sk3d-menu-card .zario-settings-panel .zario-settings-close {
+  position:relative;
+  z-index:101!important;
+  display:inline-flex!important;
+  justify-content:center;
+  align-items:center;
+  width:48px;
+  height:48px;
+  flex:0 0 48px;
+  pointer-events:auto!important;
+  touch-action:manipulation;
+  -webkit-tap-highlight-color:transparent;
+}

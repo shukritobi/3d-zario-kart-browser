@@ -14,7 +14,7 @@ test('main menu never scrolls, and advanced settings remain accessible',async ({
   await expect(page.locator('.zario-settings-panel')).toBeVisible();
   await expect(page.locator('.sk3d-cc-row')).toBeVisible();
   await expect(page.locator('.zario-controls')).toBeVisible();
-  await page.locator('.zario-settings-close').click();
+  await page.locator('.zario-settings-close').tap(); // real touchscreen gesture on iPhone emulation
   await expect(page.locator('.zario-settings-panel')).toBeHidden();
 });
 
