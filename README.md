@@ -21,3 +21,9 @@ npm run build
 This independent browser game is adapted from [Super Kart 3D.js](https://github.com/fecolinhares/super-kart-3djs) by Feco Linhares, used under its MIT license. The original copyright notice is retained in [LICENSE](LICENSE). Original engine, racing assets and code remain credited to the original author. Zario Kart is not affiliated with Nintendo.
 
 Further engineering notes: [research and performance plan](docs/research.md).
+
+## Blank-screen fix and publishing
+
+GitHub Pages was initially publishing raw Vite source through Jekyll. The build workflow now supports branch-based Pages by committing the compiled site files to main, followed by an explicit Pages rebuild request. If Pages is switched to GitHub Actions, the same workflow directly deploys the dist folder instead.
+
+Edit index.source.html (not the compiled index.html). The predev and prebuild scripts restore the original HTML before starting Vite. The boot guard displays readable errors and a safe-graphics option rather than a blank page.

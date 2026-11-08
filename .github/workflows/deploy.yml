@@ -1,32 +1,86 @@
-name: Deploy Zario Kart to GitHub Pages
+name: Build and publish Zario Kart
 on:
   push:
     branches: [main]
   workflow_dispatch:
+
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
+
 concurrency:
-  group: pages
-  cancel-in-progress: true
+  group: zario-pages
+  cancel-in-progress: false
+
 jobs:
-  build-and-deploy:
+  build-and-publish:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - run: npm install --no-audit --no-fund
-      - run: npm run build
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - name: Build Vite production bundle
+        run: npm run build
+      - name: Detect GitHub Pages mode
+        id: pagesmode
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          json=$(curl -fsSL \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/pages")
+          mode=$(echo "$json" | jq -r '.build_type // "legacy"')
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "GitHub Pages build type: $mode"
+
+      # Branch-based Pages (Jekyll) publishes tracked files. Vite source JS
+      # cannot run as unbundled ES modules. Compile static output into the
+      # existing /main root so the current Pages setting also works.
+      # A GITHUB_TOKEN commit won't trigger Pages, so request a build via API.
+      - name: Publish compiled bundle for branch-based Pages
+        if: steps.pagesmode.outputs.mode != 'workflow'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp dist/index.html index.html
+          cp dist/favicon.svg favicon.svg
+          mkdir -p assets
+          rsync -a --delete dist/assets/ assets/
+          touch .nojekyll
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html favicon.svg .nojekyll assets
+          if ! git diff --cached --quiet; then
+            git commit -m "Publish compiled Zario Kart for branch-based Pages"
+            git push origin HEAD:main
+          else
+            echo "Built static site is already current."
+          fi
+          curl --fail-with-body -sS \
+            -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/pages/builds" \
+            | tee /tmp/pages-build-result.json
+          echo "Pages build requested for the compiled site."
+
+      # Switching Source to GitHub Actions later also works:
+      - name: Configure workflow-based Pages
+        if: steps.pagesmode.outputs.mode == 'workflow'
+        uses: actions/configure-pages@v5
+      - name: Upload built site
+        if: steps.pagesmode.outputs.mode == 'workflow'
+        uses: actions/upload-pages-artifact@v3
         with:
           path: dist
-      - name: Deploy to GitHub Pages
+      - name: Deploy built site
+        if: steps.pagesmode.outputs.mode == 'workflow'
         id: deployment
         uses: actions/deploy-pages@v4
