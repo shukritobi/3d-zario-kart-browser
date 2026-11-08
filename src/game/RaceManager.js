@@ -437,11 +437,10 @@ export class RaceManager {
         continue;
       }
       const st = kart.state || {};
-      // AUDIT (Jarvis QA loop 2026-08-11): OUT-OF-BOUNDS rescue — a kart
-      // flung past the map edge (hard shove/boost at a tight corner) used to
-      // drive away forever (SIM seed 2918: z went to -126, v=4.6 never
-      // triggered the <3 m/s stuck rescue). Any kart beyond the world bounds
-      // gets the Lakitu IMMEDIATELY (1s grace), no speed threshold.
+      // True course-relative out-of-bounds rescue: only outside the
+      // selected route's measured XZ extents + 45m safety margin.
+      // The original 95x62m rectangle teleported legitimate 1.3km-road
+      // drivers once per second.
       const oob = isOutsideTrackBounds(st.position, this._trackBounds);
       if (oob) {
         kart._stuckT = (kart._stuckT || 0) + dt;

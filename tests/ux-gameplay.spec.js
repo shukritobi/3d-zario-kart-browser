@@ -204,3 +204,29 @@ test('full minimap path remains inside circular frame on extended circuit',async
   expect(shape.zoom).toBe(1);
   expect(shape.farthest).toBeLessThan(shape.inner+0.5);
 });
+
+
+test('actual long-track kart cannot be rescued while driving valid road beyond old world bounds',async({page},info)=>{
+  test.skip(info.project.name!=='mobile-webkit','WebKit real scene regression');
+  test.setTimeout(110000);
+  await page.setViewportSize({width:844,height:390});
+  await page.goto('/?track=4&quality=low&test',{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>!!window.__sk3d?.playerKart()?.state,null,{timeout:90000});
+  const result=await page.evaluate(()=>{
+    const api=window.__sk3d,rm=api.raceManager,player=api.playerKart();
+    const p=api.track.path.getPointAt(.43);
+    rm.phase='race';
+    player.invincible=false;player.starred=false;player.finished=false;
+    player.state.position.copy(p);
+    player.group.position.copy(p);
+    player.state.offRoad=false;player.state.speed=23;
+    player._stuckT=0;
+    const oldOob=Math.abs(p.x)>95||Math.abs(p.z)>62;
+    rm._updateRescues(1.1);
+    const distance=player.state.position.distanceTo(p);
+    return {oldOob,distance,stuck:player._stuckT};
+  });
+  expect(result.oldOob).toBe(true);
+  expect(result.distance).toBeLessThan(0.02);
+  expect(result.stuck).toBe(0);
+});
