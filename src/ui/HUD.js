@@ -6,6 +6,7 @@
  * with needle, the held item slot, countdown, finish screen and toasts.
  */
 import { CONFIG } from '../config.js';
+import { computeUpcomingTurn } from './RouteHints.js';
 import './ui.css';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -43,7 +44,7 @@ const TOAST_MS = 2400;
 const MEDALS = { 1: '🥇', 2: '🥈', 3: '🥉' };
 
 /** Minimap: number of samples used to flatten the track path into a polyline. */
-const MINIMAP_SAMPLES = 64;
+const MINIMAP_SAMPLES = 120;
 const MINIMAP_SIZE = 120;
 const MINIMAP_PAD = 9;
 const DOT_R = 4;
@@ -505,7 +506,7 @@ export class HUD {
       window.innerWidth <= 768;
     return {
       wrap, dotsGroup, view,
-      zoom: mobile ? 2.1 : 1,
+      zoom: 1, // always fit the complete track, no broken mobile pan
       scale, offX, offZ,
       // Limites projetados da pista (unidades do viewBox) — clamp do pan.
       pMinX: offX + minX * scale, pMaxX: offX + maxX * scale,
@@ -657,26 +658,17 @@ export class HUD {
   }
 
   _updateRouteCue(player) {
-    if (!this.routeCueEl || !this._trackPath || !player || typeof player.progress01 !== 'number') return;
-    if (this.finishEl && !this.finishEl.classList.contains('sk3d-hidden')) {
-      this.routeCueEl.classList.add('sk3d-hidden');
-      return;
-    }
-    const t = ((player.progress01 % 1) + 1) % 1;
-    const lookAhead = 0.035;
-    const a = this._trackPath.getTangentAt(t);
-    const b = this._trackPath.getTangentAt((t + lookAhead) % 1);
-    const cross = a.z * b.x - a.x * b.z;
-    const dot = Math.max(-1, Math.min(1, a.x * b.x + a.z * b.z));
-    const turnDeg = Math.atan2(cross, dot) * 180 / Math.PI;
-    const visible = Math.abs(turnDeg) >= 12;
-    this.routeCueEl.classList.toggle('sk3d-hidden', !visible);
-    if (!visible) return;
-    const left = turnDeg < 0;
-    this.routeCueArrowEl.textContent = left ? '↶' : '↷';
-    this.routeCueLabelEl.textContent = left ? 'TURN LEFT' : 'TURN RIGHT';
-    const distance = this._trackLength > 0 ? Math.max(0, Math.round(this._trackLength * lookAhead)) : 0;
-    this.routeCueEl.setAttribute('aria-label', `${left ? 'Turn left' : 'Turn right'} ahead${distance ? ` in ${distance} meters` : ''}`);
+    if (!this.routeCueEl || !this._trackPath || !player) return;
+    const s=player.state;
+    const stopped=!!player.finished || (this.finishEl && !this.finishEl.classList.contains('sk3d-hidden'));
+    const info=stopped || s?.offRoad ? null : computeUpcomingTurn(
+      this._trackPath, s?.progress01, this._trackLength, s?.heading, Math.abs(s?.speed||0)
+    );
+    this.routeCueEl.classList.toggle('sk3d-hidden', !info);
+    if (!info) return;
+    this.routeCueArrowEl.textContent=info.direction==='LEFT'?'↶':'↷';
+    this.routeCueLabelEl.textContent=`${info.direction} · ${info.distance}m`;
+    this.routeCueEl.setAttribute('aria-label', `Upcoming ${info.direction.toLowerCase()} turn in about ${info.distance} metres`);
   }
 
   /**
