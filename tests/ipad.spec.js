@@ -19,6 +19,7 @@ test('iPad landscape renders gyro and grip controls with usable thumb targets', 
   expect(metrics.touchWidth).toBeGreaterThanOrEqual(80);
   expect(metrics.grip).toBe('tight');
   expect(metrics.graphics.profile).toBeTruthy();
+  await page.evaluate(() => document.body.classList.add('zario-race-input'));
   await expect(page.getByRole('button',{name:'Switch between tight arcade handling and classic loose drift'})).toBeVisible();
   await expect(page.getByRole('button',{name:'Reverse steering for touch, gyro and gamepad'})).toBeVisible();
   expect(errors).toEqual([]);
@@ -28,6 +29,7 @@ test('iPad steering flip and grip setting persist across reloads', async ({page}
   test.skip(testInfo.project.name !== 'ipad-landscape-webkit', 'iPad settings');
   await page.goto('/?quality=low');
   await page.waitForFunction(() => !!window.__zarioControlStatus, null, {timeout:70000});
+  await page.evaluate(() => document.body.classList.add('zario-race-input'));
   const flip = page.getByRole('button',{name:'Reverse steering for touch, gyro and gamepad'});
   const grip = page.getByRole('button',{name:'Switch between tight arcade handling and classic loose drift'});
   await flip.click();
@@ -52,6 +54,8 @@ test('iPad gyro permission and axis fallback are interactive', async ({page}, te
   }));
   await page.goto('/?quality=low');
   await page.waitForFunction(() => !!window.__zarioControlStatus, null, {timeout:70000});
+  await page.evaluate(() => document.body.classList.add('zario-race-input'));
+  await page.evaluate(() => document.body.classList.add('zario-race-input'));
   await page.getByRole('button',{name:'Enable tilt steering (requires motion permission)'}).click();
   let status=await page.evaluate(() => window.__zarioControlStatus());
   expect(status.tiltEnabled).toBe(true);

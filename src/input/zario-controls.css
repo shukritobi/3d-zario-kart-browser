@@ -37,3 +37,8 @@ body.zario-touchscreen .zario-controls{display:flex}
   body.zario-touchscreen .sk3d-touch-drift{right:calc(126px + env(safe-area-inset-right, 0px))!important}
   body.zario-touchscreen .sk3d-hud-bottom{bottom:170px!important}
 }
+
+/* Input strip must never cover or intercept the main menu, settings, race
+   selection cards, pause overlay or results panel. */
+body:not(.zario-race-input) .zario-controls{display:none!important;pointer-events:none!important}
+body:not(.zario-race-input) .zario-landscape-hint{display:none!important}

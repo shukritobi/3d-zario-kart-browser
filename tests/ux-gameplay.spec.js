@@ -6,6 +6,7 @@ test('main menu never scrolls, and advanced settings remain accessible',async ({
   const card=page.locator('.sk3d-menu-card');
   await expect(page.locator('.sk3d-start-btn')).toBeVisible();
   await expect(page.locator('.zario-settings-toggle')).toBeVisible();
+  await expect(page.locator('.zario-controls')).toBeHidden();
   const noScroll=await card.evaluate(el=>({scroll:el.scrollHeight,client:el.clientHeight,overflow:getComputedStyle(el).overflowY}));
   expect(noScroll.overflow).toBe('hidden');
   expect(noScroll.scroll).toBeLessThanOrEqual(noScroll.client+3);

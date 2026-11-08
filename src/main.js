@@ -229,6 +229,11 @@ const menu = new Menu({
 menu.restoreMute(); // persisted mute state (audit minor)
 const touch = new TouchControls({ onSteer: setTouchSteer, onItem: () => pressItem(), onPause: togglePause, onDrift: (b) => { touchDrift = b; } });
 const zarioControls = new ZarioControls({ touchRoot: touch.root, onItemDown: pressItem, onItemUp: releaseItem, onPause: togglePause });
+// Menus, pause cards and race results must NEVER be blocked by game inputs.
+// Explicitly gate the floating control strip to the two playable states.
+onStateChange((state) => document.body.classList.toggle(
+  'zario-race-input', state === STATES.COUNTDOWN || state === STATES.RACE
+));
 window.__zarioControlStatus = () => zarioControls.status();
 window.__zarioPerformance = () => renderer.userData.qualityReport();
 bootOverlay.setStage('drawing the HUD', 0.82);

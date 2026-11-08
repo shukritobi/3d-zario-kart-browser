@@ -5,6 +5,8 @@ test('mobile scene boots and exposes performance diagnostics', async ({ page }) 
   page.on('pageerror', err => jsErrors.push(err.message));
   await page.goto('/?quality=low', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => !!window.__zarioControlStatus && !!window.__zarioPerformance, null, { timeout: 60000 });
+  await expect(page.locator('.zario-controls button').first()).toBeHidden();
+  await page.evaluate(() => document.body.classList.add('zario-race-input'));
   await expect(page.locator('.zario-controls button').first()).toBeVisible();
   const app = await page.evaluate(() => ({
     canvas: !!document.querySelector('#app canvas'),
@@ -27,6 +29,7 @@ test('tilt control requests consent from a tap and can calibrate', async ({ page
   });
   await page.goto('/?quality=low', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => !!window.__zarioControlStatus, null, { timeout: 60000 });
+  await page.evaluate(() => document.body.classList.add('zario-race-input'));
   await page.locator('.zario-controls button').first().click();
   await expect(page.locator('.zario-controls button').first()).toContainText('GYRO ON');
   const status = await page.evaluate(() => {
