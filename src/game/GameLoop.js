@@ -31,7 +31,14 @@ export class GameLoop {
     const tick = (now) => {
       if (!this.running) return;
       // Background tabs shouldn't burn GPU or advance the race while hidden.
-      if (document.hidden || (this.minFrameMs && now - this.last < this.minFrameMs)) {
+      // A software-rendered iPhone menu used to spend ~100% CPU/GPU
+      // drawing an animated 3D scene UNDER a mostly opaque menu. That
+      // starved native touch-end dispatch on Chromium and caused the
+      // Settings close button to appear frozen. Idle/mobile panels need
+      // only a gentle 10fps camera showcase; racing stays at 60fps.
+      const panelOpen = !document.body.classList.contains('zario-race-input');
+      const targetFrameMs = this.mobile && panelOpen ? 100 : this.minFrameMs;
+      if (document.hidden || (targetFrameMs && now - this.last < targetFrameMs)) {
         if (document.hidden) this.last = now;
         this.rafId = requestAnimationFrame(tick);
         return;

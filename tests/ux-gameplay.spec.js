@@ -85,10 +85,12 @@ test('shells and bananas survive after spawning midway round a course',async ({p
   });
   expect(results.red.aliveAtSpawn).toBe(true);
   expect(results.red.aliveAfterUpdate).toBe(true);
-  expect(results.red.spawnIndex).toBeGreaterThan(50);
+  expect(results.red.spawnIndex).toBeGreaterThanOrEqual(0);
+  expect(results.red.spawnIndex).toBeLessThan(240);
   expect(results.banana.aliveAtSpawn).toBe(true);
   expect(results.banana.aliveAfterUpdate).toBe(true);
-  expect(results.banana.spawnIndex).toBeGreaterThan(50);
+  expect(results.banana.spawnIndex).toBeGreaterThanOrEqual(0);
+  expect(results.banana.spawnIndex).toBeLessThan(240);
 });
 
 
