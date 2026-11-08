@@ -34,5 +34,45 @@ export function buildThemeLandmarks(path,themeId) {
     pivot.add(banner);
     group.add(pivot);
   }
+
+  // Distinct themed roadside rhythms: sculpted sandstone spires in the
+  // canyon, rounded floating clouds and pastel puffs in the sky garden.
+  // InstancedMesh keeps these 60+ large landmarks to just two draw calls.
+  const scenicCount=34;
+  const mainGeo=themeId===3
+    ? new THREE.ConeGeometry(1.8,9.5,7)
+    : new THREE.SphereGeometry(2.8,12,8);
+  const accentGeo=themeId===3
+    ? new THREE.ConeGeometry(1.0,4.0,6)
+    : new THREE.SphereGeometry(1.7,10,8);
+  const mainMat=new THREE.MeshLambertMaterial({color:themeId===3?0xc46f55:0xedf7ff,flatShading:true});
+  const accentMat=new THREE.MeshLambertMaterial({color:themeId===3?0xf1ae79:0xffbee2,flatShading:true});
+  const large=new THREE.InstancedMesh(mainGeo,mainMat,scenicCount);
+  const small=new THREE.InstancedMesh(accentGeo,accentMat,scenicCount);
+  large.castShadow=false;
+  small.castShadow=false;
+  const dummy=new THREE.Object3D(),point=new THREE.Vector3(),tangent=new THREE.Vector3();
+  for(let i=0;i<scenicCount;i++){
+    const t=(i+0.45)/scenicCount;
+    path.getPointAt(t,point);
+    path.getTangentAt(t,tangent);
+    const side=i%2===0?1:-1;
+    const lateral=15+(i%4)*5;
+    const px=point.x+side*tangent.z*lateral;
+    const pz=point.z-side*tangent.x*lateral;
+    const scale=0.72+(i%7)*0.15;
+    dummy.position.set(px,point.y+(themeId===3?4.75*scale:9+(i%4)*2),pz);
+    dummy.scale.set(scale,scale,scale);
+    dummy.rotation.set(0,(i*1.92)%6.28,0.09*Math.sin(i));
+    dummy.updateMatrix();
+    large.setMatrixAt(i,dummy.matrix);
+    dummy.position.set(px+2.4,point.y+(themeId===3?2.0*scale:11+(i%5)*1.4),pz+1.2);
+    dummy.scale.set(scale*0.82,scale*0.82,scale*0.82);
+    dummy.updateMatrix();
+    small.setMatrixAt(i,dummy.matrix);
+  }
+  large.instanceMatrix.needsUpdate=true;
+  small.instanceMatrix.needsUpdate=true;
+  group.add(large,small);
   return group;
 }
