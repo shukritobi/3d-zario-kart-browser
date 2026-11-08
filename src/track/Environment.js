@@ -885,6 +885,7 @@ export class Environment {
   }
 
   buildMountains(scene) {
+    this._mountainDebug = [];
     // MK8D layered ranges — FOUR depth bands with true ATMOSPHERIC
     // PERSPECTIVE: each band's three layer colors are mixed toward the fog
     // color by distance (band.haze), so far bands are pale desaturated
@@ -979,6 +980,9 @@ export class Environment {
           colors: layerColors,
         });
         const rock = new THREE.Mesh(geo, rockMat);
+        rock.name = 'zario-scenery-mountain';
+        rock.userData.trackClearanceRadius = footprint;
+        this._mountainDebug.push({x:cx,z:cz,radius:footprint});
         rock.position.set(cx, yBase, cz);
         rock.rotation.set((rand() - 0.5) * 0.08, rand() * Math.PI, (rand() - 0.5) * 0.08);
         rock.scale.set(sx, 1, sz);

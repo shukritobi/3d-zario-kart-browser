@@ -157,3 +157,27 @@ test('item box pickup creates shards and a flying ammo indicator',async({page},i
   expect(result.fly).toBe(true);
   expect(result.held).toBe(true);
 });
+
+
+test('mountain footprints never intersect the longer race circuit',async({page},info)=>{
+  test.skip(info.project.name!=='mobile-webkit','run one scene clearance check');
+  test.setTimeout(120000);
+  await page.setViewportSize({width:844,height:390});
+  await page.goto('/?track=3&quality=low',{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>!!window.__sk3d?.environment?._mountainDebug,null,{timeout:90000});
+  const stats=await page.evaluate(()=>{
+    const api=window.__sk3d;
+    const points=api.track.path.getSpacedPoints(360);
+    let min=Infinity;
+    for(const rock of api.environment._mountainDebug){
+      let distance=Infinity;
+      for(const p of points){
+        distance=Math.min(distance,Math.hypot(p.x-rock.x,p.z-rock.z));
+      }
+      min=Math.min(min,distance-rock.radius);
+    }
+    return {min,rocks:api.environment._mountainDebug.length};
+  });
+  expect(stats.rocks).toBeGreaterThan(0);
+  expect(stats.min).toBeGreaterThan(20);
+});

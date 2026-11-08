@@ -1620,6 +1620,7 @@ window.__sk3d = {
   raceManager,
   playerKart: () => playerKart,
   track,
+  environment: env,
   hud, // QA tick31: gameplay probes drive HUD states directly (toast/finish)
   audio,
   particles,
