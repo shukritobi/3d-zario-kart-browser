@@ -181,3 +181,26 @@ test('mountain footprints never intersect the longer race circuit',async({page},
   expect(stats.rocks).toBeGreaterThan(0);
   expect(stats.min).toBeGreaterThan(20);
 });
+
+
+test('full minimap path remains inside circular frame on extended circuit',async({page},info)=>{
+  test.skip(info.project.name!=='mobile-webkit','single map geometry regression');
+  test.setTimeout(90000);
+  await page.setViewportSize({width:844,height:390});
+  await page.goto('/?track=4&quality=low',{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>!!window.__sk3d?.hud?._mm,null,{timeout:90000});
+  const shape=await page.evaluate(()=>{
+    const api=window.__sk3d,mm=api.hud._mm;
+    const center=60,inner=51;
+    let farthest=0;
+    for(let i=0;i<360;i++){
+      const p=api.track.path.getPointAt(i/360);
+      const x=mm.offX+p.x*mm.scale;
+      const y=mm.offZ+p.z*mm.scale;
+      farthest=Math.max(farthest,Math.hypot(x-center,y-center));
+    }
+    return {farthest,inner,zoom:mm.zoom};
+  });
+  expect(shape.zoom).toBe(1);
+  expect(shape.farthest).toBeLessThan(shape.inner+0.5);
+});

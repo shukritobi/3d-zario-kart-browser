@@ -499,7 +499,10 @@ export class HUD {
 
     // Uniform scale (preserves track shape), centered inside the circle.
     const avail = MINIMAP_SIZE - MINIMAP_PAD * 2;
-    const scale = avail / Math.max(spanX, spanZ);
+    // SVG has a circular frame: scaling a rectangular course to the full
+    // square viewBox clips its four corners. Fit the X/Z diagonal INSIDE
+    // the circular rim, so long courses remain complete and centered.
+    const scale = avail / Math.hypot(spanX, spanZ);
     const midX = (minX + maxX) / 2;
     const midZ = (minZ + maxZ) / 2;
     const offX = MINIMAP_SIZE / 2 - midX * scale;
