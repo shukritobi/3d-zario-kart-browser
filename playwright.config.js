@@ -8,6 +8,10 @@ export default defineConfig({
   projects: [
     { name: 'mobile-chromium', use: { ...devices['iPhone 13'], browserName: 'chromium' } },
     { name: 'mobile-webkit', use: { ...devices['iPhone 13'], browserName: 'webkit' } },
+    { name: 'ipad-landscape-webkit', use: {
+      ...devices['iPad Pro 11'], browserName: 'webkit',
+      viewport: { width: 1194, height: 834 }, isMobile: true, hasTouch: true,
+    } },
   ],
   webServer: { command: 'npm run dev -- --host 127.0.0.1', port: 3457, reuseExistingServer: !process.env.CI, timeout: 120000 },
   reporter: [['list']],

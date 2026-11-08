@@ -17,6 +17,8 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npm install --no-save @playwright/test
       - run: npx playwright install --with-deps chromium webkit
+      - name: Test steering direction and lateral grip math
+        run: node --test tests/unit/*.test.mjs
       - run: npx playwright test
       - uses: actions/upload-artifact@v4
         if: always()
