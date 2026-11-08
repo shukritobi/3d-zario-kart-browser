@@ -2181,6 +2181,8 @@ export function buildTrack(scene, trackPath = TRACK_PATH, themeId = 1) {
 
   const cityMode = trackPath === CITY_PATH;
   const terrain = buildTerrain(path, cityMode);
+  if (themeId===3) terrain.material.color.set(0xe1ba8d);
+  if (themeId===4) terrain.material.color.set(0xc5f1c2);
   group.add(terrain);
 
   // Dirt shoulders either side of the asphalt (softens the road→grass edge).
@@ -2197,6 +2199,8 @@ export function buildTrack(scene, trackPath = TRACK_PATH, themeId = 1) {
     repeatV: 1,
     ...(isCity ? { color: 0x3a3f4d } : {}),
   });
+  if (themeId === 3) shoulder.material.color.set(0xe7b98f);
+  if (themeId === 4) shoulder.material.color.set(0xd1daf7);
   shoulder.receiveShadow = true;
   group.add(shoulder);
 

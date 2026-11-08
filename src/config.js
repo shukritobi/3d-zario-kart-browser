@@ -137,17 +137,17 @@ export const CONFIG = {
   },
 
   camera: {
-    fov: 68, // AUDIT r17 (Feco real-GPU): the 7.2m/3.4m chase made the kart
+    fov: 66, // AUDIT r17 (Feco real-GPU): the 7.2m/3.4m chase made the kart
     // tiny in frame and the FINISH gantry dominate. MK8D keeps the kart
     // ~25-30% of the frame: closer (5.7m), lower (2.6m), wider FOV 68.
     // (r20: 5.2 cropped the kart at the bottom edge — 5.7 keeps the size
     // without the heavy crop.)
-    followDistance: 4.3, // AUDIT R5: critic recommended 4.0-4.3m — kart is the subject of the frame
+    followDistance: 4.7, // AUDIT R5: critic recommended 4.0-4.3m — kart is the subject of the frame
     neonFollowExtra: 0.55, // Neon has denser rails/lighting; reveal more route without shrinking Meadow
-    followHeight: 2.3,
-    lookAhead: 4.6,
+    followHeight: 2.1,
+    lookAhead: 5.8,
     lookHeight: 1.2,
-    lerp: 5.0,
+    lerp: 7.0,
     shakeIntensity: 0.02,
   },
 

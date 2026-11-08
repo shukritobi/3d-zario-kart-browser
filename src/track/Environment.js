@@ -508,8 +508,12 @@ export class Environment {
     // trackId 2 (NEON CITY) swaps the sunny meadow for an urban night theme:
     // night fog color matches the sky horizon so the dome blends seamlessly.
     const night = this.trackId === 2;
-    // AUDIT: night haze carries a purple tint so distance reads neon-lit, not void-black
-    scene.fog = new THREE.Fog(night ? 0x141034 : 0xbfe6ff, night ? 120 : 70, night ? 420 : 430);
+    const sunset = this.trackId === 3;
+    const skyGarden = this.trackId === 4;
+    // Same drawing cost for each theme. Palette and atmosphere create a
+    // different sense of place without photoreal textures on mobile GPUs.
+    const fogColor = night ? 0x141034 : sunset ? 0xffd6b7 : skyGarden ? 0xd9edff : 0xbfe6ff;
+    scene.fog = new THREE.Fog(fogColor, night ? 120 : 70, night ? 420 : 430);
 
     // Sky dome — PREMIUM PASS (2026-08-21): ShaderMaterial procedural (cookbook
     // gradient-sky recipe) substitui a textura canvas. Gradiente contínuo sem
@@ -520,10 +524,10 @@ export class Environment {
     const keyPos = night ? [90, 115, -72] : [70, 90, 40];
     this.sunDir = new THREE.Vector3(...keyPos).normalize();
     const skyUniforms = {
-      uTop:      { value: new THREE.Color(night ? 0x241a4e : 0x2e8fd8) },
-      uMid:      { value: new THREE.Color(night ? 0x2a2a5a : 0x7cc3f0) },
-      uHorizon:  { value: new THREE.Color(night ? 0x141034 : 0xd8f0fc) }, // AUDIT R21: horizonte noturno azul-roxo profundo — o tom anterior (0x251a3a) + fog amarelado das luzes lia como banda OLIVA no horizonte central
-      uSunColor: { value: new THREE.Color(night ? 0xe8ecf8 : 0xfff2cc) },
+      uTop:      { value: new THREE.Color(night ? 0x241a4e : sunset ? 0xf38d74 : skyGarden ? 0x549cfa : 0x2e8fd8) },
+      uMid:      { value: new THREE.Color(night ? 0x2a2a5a : sunset ? 0xffbc8b : skyGarden ? 0x9ad7ff : 0x7cc3f0) },
+      uHorizon:  { value: new THREE.Color(night ? 0x141034 : sunset ? 0xffe0b6 : skyGarden ? 0xe3f4ff : 0xd8f0fc) }, // AUDIT R21: horizonte noturno azul-roxo profundo — o tom anterior (0x251a3a) + fog amarelado das luzes lia como banda OLIVA no horizonte central
+      uSunColor: { value: new THREE.Color(night ? 0xe8ecf8 : sunset ? 0xffeead : 0xfff2cc) },
       uSunDir:   { value: this.sunDir.clone() },
       uNight:    { value: night ? 1 : 0 },
     };
@@ -587,10 +591,10 @@ export class Environment {
     // superfície roxa clara (fog:false, depthWrite:false) sobre a qual o
     // bloom âmbar pintava a "COLINA VERDE-OLIVA" do horizonte. Sem postfx
     // (?nobl) ela sumia; com anel removido à noite, some também.
-    if (!night) this.buildHazeRing(scene, 0xbfe6ff, 185, 30);
+    if (!night) this.buildHazeRing(scene, fogColor, 185, 30);
     // AUDIT R12 (2ª camada de profundidade — Meadow): névoa BAIXA na base
     // das colinas (a camada R146/y6.5 é alta; sem a baixa a base lê recorte).
-    if (!night) this.buildGroundHaze(scene, 0xbfe6ff, 100, 2.0, 38, 4.2, 0.5);
+    if (!night) this.buildGroundHaze(scene, fogColor, 100, 2.0, 38, 4.2, 0.5);
 
     // --- lights (AAA rig: key + fill + sky/ground hemi + rim) --------------
     // NEON CITY swaps the warm sunny rig for dim cool moonlight (the moon
@@ -608,7 +612,7 @@ export class Environment {
     // (kept for the night-city headlight rig wiring, not emitted).
     // PREMIUM PASS: keyPos/sunDir agora definidos no bloco do céu (o shader
     // do domo usa a MESMA direção — sol visível = direção da key light).
-    const keyColor = night ? 0x8fa8ff : 0xfff2d0;
+    const keyColor = night ? 0x8fa8ff : sunset ? 0xffcb93 : skyGarden ? 0xf4f9ff : 0xfff2d0;
     const key = new THREE.DirectionalLight(keyColor, 0);
     key.position.copy(this.sunDir).multiplyScalar(150);
     scene.add(key);

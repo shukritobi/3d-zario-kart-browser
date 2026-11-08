@@ -1065,11 +1065,11 @@ let baseFov = CONFIG.camera.fov;
 let shakeTimer = 0;
 let shakeMag = 0;
 // Camera feel (audit r2): drift swing, speed pull-back, mini-boost kick.
-const CAM_DRIFT_SWING = 1.7;     // lateral offset ∝ steer while drifting
-const CAM_SPEED_PULLBACK = 0.15; // AUDIT r18-FIX: 0.35 pushed the chase
+const CAM_DRIFT_SWING = 0.65;     // lateral offset ∝ steer while drifting
+const CAM_SPEED_PULLBACK = 0.09; // AUDIT r18-FIX: 0.35 pushed the chase
 // 5.2→7.0m at top speed — the kart shrank to ~12-15% of the frame, killing
 // the MK8D 25-30% composition the r17 camera pass added.
-const CAM_BOOST_KICK = 0.9;      // extra pull-back on boost start
+const CAM_BOOST_KICK = 0.55;      // extra pull-back on boost start
 let camSwing = 0;                // smoothed lateral camera swing
 let camBoostKick = 0;            // decaying boost kick
 let camWasBoost = false;         // boost rising-edge detect
@@ -1155,7 +1155,7 @@ function updateCamera(dt, t) {
   // kick on boost start (mini-boost auto-fire / mushroom / rocket start).
   const steer = k.input && typeof k.input.steer === 'number' ? k.input.steer : 0;
   const swingTarget = st.drifting ? steer * CAM_DRIFT_SWING : 0;
-  camSwing += (swingTarget - camSwing) * Math.min(1, 6 * dt);
+  camSwing += (swingTarget - camSwing) * Math.min(1, 8 * dt);
   if (st.boost && !camWasBoost) camBoostKick = 1;
   camWasBoost = !!st.boost;
   camBoostKick *= Math.exp(-5.5 * dt);
@@ -1183,7 +1183,7 @@ function updateCamera(dt, t) {
 
   // Speed FOV: wider at high speed + extra punch on boost (arcade feel);
   // the decaying camBoostKick adds a short FOV punch on mini-boost.
-  const targetFov = baseFov + (st.boost > 0 ? 6 : 0) + speed01 * 5 + camBoostKick * 3.5;
+  const targetFov = baseFov + (st.boost > 0 ? 4 : 0) + speed01 * 3.5 + camBoostKick * 2.0;
   camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 6);
   camera.updateProjectionMatrix();
 
