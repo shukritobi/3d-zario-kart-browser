@@ -28,6 +28,8 @@ test('portrait mobile asks for physical rotation without breaking rendering coor
   if((await page.viewportSize()).width < (await page.viewportSize()).height){
     expect(state.h).toBeGreaterThan(state.w);
     expect(state.bodyTransform).toBe('none');
+    await expect(page.locator('.zario-orientation-prompt')).toBeHidden();
+    await page.evaluate(() => document.body.classList.add('zario-race-input'));
     await expect(page.locator('.zario-orientation-prompt')).toBeVisible();
     expect(state.pageOverflows).toBeFalsy();
   }
