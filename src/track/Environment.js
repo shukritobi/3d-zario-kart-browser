@@ -2684,10 +2684,13 @@ export class Environment {
    * bands visible past the fog far plane; low opacity keeps them subtle.
    */
   buildHorizonHaze(scene) {
+    // The previous 230m/285m rings crossed the expanded 1.3km circuits and
+    // looked like giant invisible scenery walls hovering through the road.
+    const outer = Math.max(395, (this._trackEnvelopeRadius || 0) + 115);
     const bands = [
-      { r: 230, y: 4.5, color: 0xfff2d8, opacity: 0.16 },
-      { r: 285, y: 6.5, color: 0xffe9c9, opacity: 0.14 },
-      { r: 345, y: 8.5, color: 0xd9ecff, opacity: 0.12 },
+      { r: outer, y: 4.5, color: 0xfff2d8, opacity: 0.10 },
+      { r: outer + 62, y: 6.5, color: 0xffe9c9, opacity: 0.09 },
+      { r: outer + 128, y: 8.5, color: 0xd9ecff, opacity: 0.07 },
     ];
     for (const b of bands) {
       const ring = new THREE.Mesh(
