@@ -13,6 +13,7 @@ test('main menu never scrolls, and advanced settings remain accessible',async ({
   await page.locator('.zario-settings-toggle').click();
   await expect(page.locator('.zario-settings-panel')).toBeVisible();
   await expect(page.locator('.sk3d-cc-row')).toBeVisible();
+  await expect(page.locator('.zario-controls')).toBeVisible();
   await page.locator('.zario-settings-close').click();
   await expect(page.locator('.zario-settings-panel')).toBeHidden();
 });
@@ -88,4 +89,71 @@ test('shells and bananas survive after spawning midway round a course',async ({p
   expect(results.banana.aliveAtSpawn).toBe(true);
   expect(results.banana.aliveAfterUpdate).toBe(true);
   expect(results.banana.spawnIndex).toBeGreaterThan(50);
+});
+
+
+test('iPhone landscape menu has separated actions and race HUD stays near edges',async({page},info)=>{
+  test.skip(info.project.name==='ipad-landscape-webkit','iPhone only');
+  test.setTimeout(140000);
+  await page.setViewportSize({width:844,height:390});
+  await page.goto('/?track=3&quality=low');
+  await page.waitForFunction(()=>!!window.__sk3d,null,{timeout:90000});
+  const getRect=async s=>page.locator(s).boundingBox();
+  const [start,racers,tracks,pick,settings]=await Promise.all(
+    ['.sk3d-start-btn','.sk3d-racers-btn','.sk3d-tracks-btn',
+     '.sk3d-current-pick','.zario-settings-toggle'].map(getRect));
+  for(const rect of [start,racers,tracks,pick,settings])expect(rect).toBeTruthy();
+  expect(racers.x+racers.width).toBeLessThan(tracks.x+3);
+  expect(start.y+start.height).toBeLessThan(racers.y+4);
+  expect(racers.y+racers.height).toBeLessThan(pick.y+3);
+  expect(pick.y+pick.height).toBeLessThan(settings.y+4);
+  // A race menu must not hide its settings beneath a clipped container.
+  const container=await page.locator('.sk3d-menu-card').evaluate(el=>({
+    scroll:el.scrollHeight,client:el.clientHeight,
+  }));
+  expect(container.scroll).toBeLessThanOrEqual(container.client+3);
+  await page.locator('.sk3d-start-btn').click();
+  await page.waitForFunction(()=>window.__sk3d?.playerKart()?.state,null,{timeout:90000});
+  await page.evaluate(()=>window.__sk3d.skipCountdown());
+  await expect(page.locator('.sk3d-hud')).toBeVisible();
+  await expect(page.locator('body > .zario-controls')).toHaveCount(0);
+  const [map,speedo,lap,steer,item]=await Promise.all(
+    ['.sk3d-minimap','.sk3d-speedo','.sk3d-lap','.sk3d-touch-left',
+     '.sk3d-touch-item'].map(getRect));
+  for(const r of [map,speedo,lap,steer,item])expect(r).toBeTruthy();
+  expect(map.width).toBeLessThan(90);
+  expect(speedo.width).toBeLessThan(110);
+  expect(lap.x+lap.width).toBeLessThan(map.x);
+  expect(steer.x+steer.width).toBeLessThan(item.x);
+  expect(steer.y).toBeGreaterThan(speedo.y+speedo.height);
+  // Moved gyroscope controls can never cover the visible race road.
+  await expect(page.locator('.zario-settings-panel')).toBeHidden();
+});
+
+test('item box pickup creates shards and a flying ammo indicator',async({page},info)=>{
+  test.skip(info.project.name!=='mobile-webkit','run one in-scene WebKit check');
+  test.setTimeout(150000);
+  await page.setViewportSize({width:844,height:390});
+  await page.goto('/?track=1&quality=low&test',{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>!!window.__sk3d?.playerKart()?.state,null,{timeout:90000});
+  await page.locator('.sk3d-start-btn').click();
+  await page.waitForFunction(()=>window.__sk3d?.playerKart()?.state,null,{timeout:90000});
+  await page.evaluate(()=>window.__sk3d.skipCountdown());
+  const result=await page.evaluate(()=>{
+    const api=window.__sk3d;
+    const rm=api.raceManager,player=api.playerKart();
+    const box=rm.itemBoxes[0];
+    player.heldItem=null;player.heldItem2=null;
+    player.state.position.copy(box.mesh.position);
+    player.group.position.copy(box.mesh.position);
+    box.update(0.016,[player],rm);
+    const state={boxActive:box.active,shards:box._shatter?.mesh?.count||0,
+      fly:!!document.querySelector('.zario-item-fly'),held:!!player.heldItem};
+    box._clearShatter();
+    return state;
+  });
+  expect(result.boxActive).toBe(false);
+  expect(result.shards).toBe(12);
+  expect(result.fly).toBe(true);
+  expect(result.held).toBe(true);
 });
