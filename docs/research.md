@@ -53,3 +53,11 @@
 ## Build/Pages status
 
 GitHub Actions completed npm install and Vite build on initial import. First deployment could not configure Pages because Pages was not enabled in repository settings. To publish: GitHub repository > Settings > Pages > Build and deployment > Source = GitHub Actions, then re-run the deployment workflow.
+
+## Additional browser references (non-imported)
+
+- [GR Kart · Sakura Circuit](https://github.com/Guilh/gr-kart-game): TypeScript fixed-step racing sim with tilt steering, mobile profiles, real-time replays and headless physics regression. No LICENSE was found in its current repository tree, so do **not** copy implementation without author permission.
+- [GizzRacer](https://github.com/mjoslyn/GizzRacer): touch / tilt / controller support, gliding and four-tier drift, directly relevant steering UX. No LICENSE found in tree, use as conceptual inspiration rather than copied code.
+- [Bot Kart](https://github.com/fubak/bot-kart): original browser kart racer supporting GitHub Pages, gamepad, remapping and three circuits. Verify license before adapting its code.
+
+The original engine was selected in part because its source license was explicitly inspected and is MIT, whereas not all otherwise useful demos include a code-reuse license.

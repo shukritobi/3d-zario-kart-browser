@@ -11,6 +11,17 @@ export class GameLoop {
     this.last = 0;
     this.updateFn = null;
     this.elapsed = 0;
+    // Limit ProMotion devices to 60 rendered frames/sec to reduce heat and battery use.
+    // Physics delta uses time between simulated frames, not between raw rAF callbacks.
+    this.mobile = /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    this.minFrameMs = this.mobile ? 15 : 0;
+    this.frameAverageMs = 16.667;
+    window.__zarioFrameStats = () => ({
+      fps: Math.round(1000 / Math.max(1, this.frameAverageMs)),
+      frameMs: +this.frameAverageMs.toFixed(2),
+      capFps: this.mobile ? 60 : 'display',
+    });
   }
 
   start(updateFn) {
@@ -19,7 +30,15 @@ export class GameLoop {
     this.last = performance.now();
     const tick = (now) => {
       if (!this.running) return;
+      // Background tabs shouldn't burn GPU or advance the race while hidden.
+      if (document.hidden || (this.minFrameMs && now - this.last < this.minFrameMs)) {
+        if (document.hidden) this.last = now;
+        this.rafId = requestAnimationFrame(tick);
+        return;
+      }
       const raw = (now - this.last) / 1000;
+      const frameMs = Math.max(0, now - this.last);
+      this.frameAverageMs = this.frameAverageMs * 0.93 + frameMs * 0.07;
       this.last = now;
       // AUDIT (Jarvis QA loop 2026-08-11): the first rAF timestamp can be
       // EARLIER than the performance.now() captured in start() (the frame
