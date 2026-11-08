@@ -303,6 +303,7 @@ export class Menu {
     this.root.setAttribute('role', 'dialog');
     this.root.setAttribute('aria-label', 'Main menu');
     this.root.innerHTML = this.buildHtml();
+    this.setupCompactSettings();
 
     this.startBtn = this.root.querySelector('.sk3d-start-btn');
     this.helpToggle = this.root.querySelector('.sk3d-help-toggle');
@@ -343,6 +344,48 @@ export class Menu {
     this.restoreSettings(); // persisted difficulty/assist/track choices
     this.drawAllCanvases();
     this.refreshPickLine();
+  }
+
+  setupCompactSettings() {
+    // Keep the landing screen fixed. All advanced controls live in one panel.
+    const card = this.root.querySelector('.sk3d-menu-card');
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'sk3d-btn zario-settings-toggle';
+    toggle.textContent = '⚙ SETTINGS';
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.setAttribute('aria-controls', 'zario-settings-panel');
+    const panel = document.createElement('section');
+    panel.id = 'zario-settings-panel';
+    panel.className = 'zario-settings-panel sk3d-hidden';
+    panel.setAttribute('aria-label','Game settings');
+    const head = document.createElement('div');
+    head.className = 'zario-settings-heading';
+    const heading = document.createElement('strong');
+    heading.textContent = '⚙ RACE SETTINGS';
+    const close = document.createElement('button');
+    close.className = 'sk3d-btn zario-settings-close';
+    close.type = 'button';
+    close.textContent = '✕';
+    close.setAttribute('aria-label','Close settings');
+    head.append(heading,close);
+    panel.append(head);
+    for (const selector of ['.sk3d-settings','.sk3d-volume-row','.sk3d-mute-toggle','.sk3d-help-toggle','.sk3d-help-panel','.sk3d-credit']) {
+      const element = card.querySelector(selector);
+      if (element) panel.append(element);
+    }
+    const picked = card.querySelector('.sk3d-current-pick');
+    picked?.after(toggle);
+    card.append(panel);
+    const showPanel = (show) => {
+      panel.classList.toggle('sk3d-hidden', !show);
+      toggle.setAttribute('aria-expanded',String(show));
+      if (show) panel.scrollTop = 0;
+    };
+    toggle.addEventListener('click', () => showPanel(panel.classList.contains('sk3d-hidden')));
+    close.addEventListener('click', () => showPanel(false));
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') showPanel(false); });
+    this.closeSettings = () => showPanel(false);
   }
 
   buildHtml() {
@@ -405,10 +448,10 @@ export class Menu {
       <div class="sk3d-menu-card">
         <h1 class="sk3d-logo">
           <span class="sk3d-logo-line">ZARIO KART</span>
-          <span class="sk3d-logo-sub">3D.js</span>
+          <span class="sk3d-logo-sub">RACE THE WORLD</span>
         </h1>
         <div class="sk3d-logo-strip" aria-hidden="true"></div>
-        <p class="sk3d-tagline">Cartoon arcade kart racing — drift, boost and blast your rivals!</p>
+        <p class="sk3d-tagline">PICK A RIDE • HIT THE TRACK</p>
         <button type="button" class="sk3d-btn sk3d-primary-btn sk3d-start-btn">🏁 Start Race</button>
         <button type="button" class="sk3d-btn sk3d-help-toggle" aria-expanded="false">❓ How to Play</button>
         <div class="sk3d-help-panel sk3d-hidden">
@@ -829,6 +872,7 @@ export class Menu {
     this.startBtn.textContent = '🏁 Start Race';
     this.reconcileMute(); // AUDIT MED-1: menu mute label went stale after pause-mute
     this.closeScreens();
+    this.closeSettings?.();
     this.refreshPickLine();
     this.root.classList.remove('sk3d-hidden');
     // Re-trigger the entrance animation on every show.

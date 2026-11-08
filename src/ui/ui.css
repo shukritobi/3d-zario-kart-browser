@@ -2310,3 +2310,49 @@ html, body {
 .sk3d-assist-row {
   row-gap: 10px;
 }
+
+/* Single-screen landing. Settings is the only vertical scrolling surface. */
+.sk3d-menu {overflow:hidden!important;touch-action:manipulation}
+.sk3d-menu-card {
+  box-sizing:border-box;position:relative;flex-shrink:0;
+  width:min(550px,calc(100% - 24px));
+  max-height:calc(100% - 14px);overflow:hidden!important;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:clamp(5px,1.7vh,12px);padding:clamp(8px,2vh,20px) clamp(12px,3vw,24px);
+  overscroll-behavior:none;border-radius:22px;
+}
+.sk3d-menu-card .sk3d-logo-line {font-size:clamp(1.7rem,5.4vw,3.15rem);letter-spacing:-.025em}
+.sk3d-menu-card .sk3d-logo-sub{font-size:clamp(.64rem,1.8vh,.95rem);letter-spacing:.16em;text-shadow:none;transform:none;color:#2257a0}
+.sk3d-menu-card .sk3d-logo-strip{min-height:3px;height:4px}
+.sk3d-menu-card .sk3d-tagline{margin:0;font-size:clamp(.65rem,1.9vh,.87rem);line-height:1.12}
+.sk3d-menu-card .sk3d-primary-btn{min-height:clamp(38px,9vh,55px);padding:6px 12px;font-size:clamp(1rem,3.1vh,1.4rem);width:min(300px,95%)}
+.sk3d-menu-card .sk3d-menu-actions{width:100%;display:flex;gap:8px;flex-wrap:nowrap}
+.sk3d-menu-card .sk3d-action-btn{min-width:0;flex:1;min-height:clamp(37px,8vh,52px);font-size:clamp(.77rem,2.6vh,1.08rem);padding:6px 9px}
+.sk3d-menu-card .sk3d-current-pick{margin:0;gap:6px;flex-wrap:wrap;font-size:clamp(.72rem,2vh,.94rem);line-height:1.2}
+.sk3d-menu-card .zario-settings-toggle{min-height:34px;padding:6px 24px;border-radius:40px;background:#e8f1ff;color:#1b2a41;box-shadow:none;font-size:.86rem}
+.sk3d-menu-card .zario-settings-panel {
+  position:absolute;inset:8px;z-index:10;padding:12px 16px;
+  overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
+  background:#fffcf4;border:3px solid #25395b;border-radius:17px;
+  display:flex;flex-direction:column;align-items:stretch;gap:14px;
+}
+.zario-settings-heading{display:flex;justify-content:space-between;align-items:center;position:sticky;top:-12px;z-index:4;background:#fffcf4;padding:8px 0;color:#17274a;border-bottom:2px solid #dae4f2}
+.zario-settings-close{min-width:42px;min-height:42px;padding:5px}
+.zario-settings-panel .sk3d-volume-label{color:#1b2a41}
+.zario-settings-panel .sk3d-help-panel{max-height:none;overflow:visible}
+.zario-settings-panel .sk3d-mute-toggle,.zario-settings-panel .sk3d-help-toggle{align-self:center}
+.sk3d-menu-card .sk3d-credit{display:none}
+@media(max-height:530px) and (orientation:landscape) {
+  .sk3d-menu-card{gap:4px;padding:7px 14px;width:min(600px,calc(100% - 22px))}
+  .sk3d-menu-card .sk3d-logo-line{font-size:clamp(1.45rem,8vh,2.15rem)}
+  .sk3d-menu-card .sk3d-logo-sub{font-size:.6rem}
+  .sk3d-menu-card .sk3d-primary-btn{min-height:36px;font-size:1.06rem}
+  .sk3d-menu-card .sk3d-action-btn{min-height:35px;font-size:.82rem}
+  .sk3d-menu-card .zario-settings-toggle{min-height:28px;padding:3px 12px;font-size:.75rem}
+  .sk3d-menu-card .sk3d-tagline{font-size:.65rem}
+  .sk3d-menu-card .sk3d-logo-strip{display:none}
+}
+@media(max-height:355px) and (orientation:landscape){
+  .sk3d-menu-card .sk3d-tagline{display:none}
+  .sk3d-menu-card{gap:2px;padding:4px 10px}
+}
