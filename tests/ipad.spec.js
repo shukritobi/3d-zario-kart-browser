@@ -41,6 +41,7 @@ test('iPad steering flip and grip setting persist across reloads', async ({page}
   const prefs = await page.evaluate(() => window.__zarioControlStatus());
   expect(prefs.inverted).toBe(true);
   expect(prefs.handling).toBe('classic');
+  await page.evaluate(() => document.body.classList.add('zario-race-input'));
   // Reset settings so later tests using the same context aren't contaminated.
   await flip.click();
   await grip.click();
@@ -54,8 +55,7 @@ test('iPad gyro permission and axis fallback are interactive', async ({page}, te
   }));
   await page.goto('/?quality=low');
   await page.waitForFunction(() => !!window.__zarioControlStatus, null, {timeout:70000});
-  await page.evaluate(() => document.body.classList.add('zario-race-input'));
-  await page.evaluate(() => document.body.classList.add('zario-race-input'));
+  await page.evaluate(() => document.body.classList.add('zario-race-input'))
   await page.getByRole('button',{name:'Enable tilt steering (requires motion permission)'}).click();
   let status=await page.evaluate(() => window.__zarioControlStatus());
   expect(status.tiltEnabled).toBe(true);
@@ -85,6 +85,7 @@ test('iPad gyro sensor loss restores touch steering rather than leaving kart uns
   }));
   await page.goto('/?quality=low');
   await page.waitForFunction(() => !!window.__zarioControlStatus, null, {timeout:70000});
+  await page.evaluate(() => document.body.classList.add('zario-race-input'));
   await page.getByRole('button',{name:'Enable tilt steering (requires motion permission)'}).click();
   const first = await page.locator('.sk3d-touch').evaluate(el => el.classList.contains('zario-tilt-active'));
   expect(first).toBe(false);
