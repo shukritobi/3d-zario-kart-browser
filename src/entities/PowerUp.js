@@ -9,6 +9,7 @@
  */
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
+import { nearestCenterlineIndex } from './itemTargeting.js';
 import { getToonMaterial, getCartoonOutlineMaterial } from '../render/MaterialLibrary.js';
 
 // ---------------------------------------------------------------------------
@@ -237,30 +238,17 @@ export function useItem(kart, ctx = {}) {
  *  of the owner, otherwise the nearest rival ahead of the owner. With
  *  `behind` (rear throw, audit r4) it picks the nearest rival BEHIND the
  *  owner instead — backward reds hunt chasers, MK8D-style. */
-function pickRedShellTarget(owner, ctx, behind = false) {
-  const karts = ctx.karts || [];
-  const preferred = ctx.targetKart;
-  if (!behind && preferred && preferred !== owner && !preferred.finished && isAheadOf(owner, preferred)) {
-    return preferred;
+function pickRedShellTarget(owner,ctx,behind=false){
+  if(!behind&&ctx.targetKart&&ctx.targetKart!==owner&&!ctx.targetKart.finished&&isAheadOf(owner,ctx.targetKart))return ctx.targetKart;
+  const score=progressScore(owner);
+  let target=null,nearest=Infinity;
+  for(const kart of ctx.karts||[]){
+    if(kart===owner||kart.finished)continue;
+    const delta=progressScore(kart)-score;
+    if((!behind&&delta<=0)||(behind&&delta>=0))continue;
+    if(Math.abs(delta)<nearest){nearest=Math.abs(delta);target=kart}
   }
-  const opos = kartPosition(owner);
-  const dir = headingVector(owner);
-  let best = null;
-  let bestD = Infinity;
-  for (const k of karts) {
-    if (k === owner || k.finished) continue;
-    const p = kartPosition(k);
-    const dx = p.x - opos.x;
-    const dz = p.z - opos.z;
-    const along = dx * dir.x + dz * dir.y; // positive = ahead of owner
-    if (behind ? along >= 0 : along <= 0) continue;
-    const d = dx * dx + dz * dz;
-    if (d < bestD) {
-      bestD = d;
-      best = k;
-    }
-  }
-  return best;
+  return target;
 }
 
 function isAheadOf(a, b) {
@@ -290,7 +278,7 @@ export class ShellProjectile {
     this.age = 0;
     this.life = 8; // seconds
     this.dead = false;
-    this.speed = CONFIG.items.shellSpeed;
+    this.speed = CONFIG.items.shellSpeed * (this.homing ? 0.88 : 0.73);
     this.rear = !!opts.rear;
     this.dir = headingVector(ownerKart);
     // Rear throws travel AGAINST the kart's heading (spawn lands at the tail
@@ -328,6 +316,7 @@ export class ShellProjectile {
     this.mesh.rotation.y = Math.atan2(this.dir.x, this.dir.y);
     this.mesh.castShadow = true;
     this.scene?.add(this.mesh);
+    this._nearIdx = nearestCenterlineIndex(this.centerline,this.mesh.position.x,this.mesh.position.z).index;
     // AUDIT r7 (shell motion trail): pooled ribbon of small glowing quads
     // left behind the shell — MK8D shells streak. Skipped with no scene
     // (headless / unit-test harness).
@@ -453,7 +442,7 @@ export class ShellProjectile {
       const tl = Math.hypot(tdx, tdz) || 1;
       const desired = { x: tdx / tl, y: tdz / tl };
       const err = signedAngle(this.dir, desired);
-      const maxTurn = 2.4 * dt; // gentle — hugs wide corners without snaking
+      const maxTurn = 4.4 * dt; // gentle — hugs wide corners without snaking
       const delta = THREE.MathUtils.clamp(-err, -maxTurn, maxTurn);
       this._rotateDir(delta);
     }
@@ -641,18 +630,8 @@ export class ShellProjectile {
     const m = this.mesh.position;
     let best = this._nearIdx;
     let bestD = Infinity;
-    const r = 8;
-    for (let i = this._nearIdx - r; i <= this._nearIdx + r; i++) {
-      const j = ((i % n) + n) % n;
-      const p = cl[j];
-      const dx = p.x - m.x;
-      const dz = p.z - m.z;
-      const d = dx * dx + dz * dz;
-      if (d < bestD) {
-        bestD = d;
-        best = j;
-      }
-    }
+    const nearest=nearestCenterlineIndex(cl,m.x,m.z,this._nearIdx,14);
+    best=nearest.index;bestD=nearest.distanceSquared;
     this._nearIdx = best;
     const limit = CONFIG.track.roadWidth * 1.8;
     return bestD > limit * limit;
@@ -733,6 +712,7 @@ export class Banana {
     // landing on the road instead of materializing.
     this._vY = 2.2;
     this.scene?.add(this.mesh);
+    this._nearIdx = nearestCenterlineIndex(this.centerline,this.mesh.position.x,this.mesh.position.z).index;
   }
 
   update(dt, karts) {
@@ -802,18 +782,8 @@ export class Banana {
     const m = this.mesh.position;
     let best = this._nearIdx;
     let bestD = Infinity;
-    const r = 8;
-    for (let i = this._nearIdx - r; i <= this._nearIdx + r; i++) {
-      const j = ((i % n) + n) % n;
-      const p = cl[j];
-      const dx = p.x - m.x;
-      const dz = p.z - m.z;
-      const d = dx * dx + dz * dz;
-      if (d < bestD) {
-        bestD = d;
-        best = j;
-      }
-    }
+    const nearest=nearestCenterlineIndex(cl,m.x,m.z,this._nearIdx,14);
+    best=nearest.index;bestD=nearest.distanceSquared;
     this._nearIdx = best;
     const limit = CONFIG.track.roadWidth * 2.0;
     return bestD > limit * limit;
