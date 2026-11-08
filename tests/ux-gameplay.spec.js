@@ -135,9 +135,9 @@ test('item box pickup creates shards and a flying ammo indicator',async({page},i
   test.setTimeout(150000);
   await page.setViewportSize({width:844,height:390});
   await page.goto('/?track=1&quality=low&test',{waitUntil:'domcontentloaded'});
+  // ?test already auto-starts the race before the menu is shown; attempting
+  // to click Start Race again waits on a deliberately hidden menu button.
   await page.waitForFunction(()=>!!window.__sk3d?.playerKart()?.state,null,{timeout:90000});
-  await page.locator('.sk3d-start-btn').click();
-  await page.waitForFunction(()=>window.__sk3d?.playerKart()?.state,null,{timeout:90000});
   await page.evaluate(()=>window.__sk3d.skipCountdown());
   const result=await page.evaluate(()=>{
     const api=window.__sk3d;
