@@ -46,3 +46,21 @@ test('tilt control requests consent from a tap and can calibrate', async ({ page
   await page.locator('.zario-controls button').first().click();
   expect((await page.evaluate(() => window.__zarioControlStatus())).tiltEnabled).toBe(false);
 });
+
+
+test('iPhone-identified mobile browser uses reduced DSP and unlock attempt on Start Race',async({page},info)=>{
+  test.skip(info.project.name==='ipad-landscape-webkit','iPhone UA only');
+  test.setTimeout(100000);
+  await page.setViewportSize({width:844,height:390});
+  await page.goto('/?quality=low',{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>!!window.__zarioAudioStatus&&!!window.__sk3d,null,{timeout:90000});
+  const first=await page.evaluate(()=>window.__zarioAudioStatus());
+  expect(first.lowPowerMobile).toBe(true);
+  await page.locator('.sk3d-start-btn').click();
+  const after=await page.evaluate(()=>window.__zarioAudioStatus());
+  expect(after.lowPowerMobile).toBe(true);
+  expect(['running','suspended','interrupted']).toContain(after.state);
+  expect(after.masterVolume).toBeGreaterThan(0);
+  await page.waitForFunction(()=>!!window.__sk3d?.playerKart()?.state,null,{timeout:90000});
+  await expect(page.locator('.sk3d-hud')).toBeVisible();
+});
