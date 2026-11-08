@@ -485,6 +485,15 @@ export class Environment {
     this._track = track;
     this._trackSamples = null;
     this._trackPath = track?.path ?? null;
+    // Larger 2026 circuits extend beyond the original scenery rings.
+    // Cache their true radial envelope before placing any backdrop objects.
+    this._trackEnvelopeRadius = 0;
+    if (track?.path) {
+      for (let i = 0; i < 360; i++) {
+        const p = track.path.getPointAt(i / 360);
+        this._trackEnvelopeRadius = Math.max(this._trackEnvelopeRadius, Math.hypot(p.x, p.z));
+      }
+    }
     // AUDIT r3: deterministic world — the same track every load so QA frames
     // are reproducible (grass/hay/palms/roadside used Math.random() and the
     // world drifted between loads, breaking before/after comparison).
@@ -513,7 +522,7 @@ export class Environment {
     // Same drawing cost for each theme. Palette and atmosphere create a
     // different sense of place without photoreal textures on mobile GPUs.
     const fogColor = night ? 0x141034 : sunset ? 0xffd6b7 : skyGarden ? 0xd9edff : 0xbfe6ff;
-    scene.fog = new THREE.Fog(fogColor, night ? 120 : 70, night ? 420 : 430);
+    scene.fog = new THREE.Fog(fogColor, night ? 140 : 85, night ? 750 : 750);
 
     // Sky dome — PREMIUM PASS (2026-08-21): ShaderMaterial procedural (cookbook
     // gradient-sky recipe) substitui a textura canvas. Gradiente contínuo sem
@@ -534,7 +543,7 @@ export class Environment {
     const sky = new THREE.Mesh(
       // AUDIT FIX: 24 segments faceted the horizon (~135m chords at 520m
       // radius); 64x32 reads smooth even from the high chase camera.
-      new THREE.SphereGeometry(520, 64, 32),
+      new THREE.SphereGeometry(1000, 64, 32),
       new THREE.ShaderMaterial({
         side: THREE.BackSide,
         depthWrite: false,
@@ -591,10 +600,10 @@ export class Environment {
     // superfície roxa clara (fog:false, depthWrite:false) sobre a qual o
     // bloom âmbar pintava a "COLINA VERDE-OLIVA" do horizonte. Sem postfx
     // (?nobl) ela sumia; com anel removido à noite, some também.
-    if (!night) this.buildHazeRing(scene, fogColor, 185, 30);
+    if (!night && (track?.length ?? 0) < 750) this.buildHazeRing(scene, fogColor, 185, 30);
     // AUDIT R12 (2ª camada de profundidade — Meadow): névoa BAIXA na base
     // das colinas (a camada R146/y6.5 é alta; sem a baixa a base lê recorte).
-    if (!night) this.buildGroundHaze(scene, fogColor, 100, 2.0, 38, 4.2, 0.5);
+    if (!night && (track?.length ?? 0) < 750) this.buildGroundHaze(scene, fogColor, 100, 2.0, 38, 4.2, 0.5);
 
     // --- lights (AAA rig: key + fill + sky/ground hemi + rim) --------------
     // NEON CITY swaps the warm sunny rig for dim cool moonlight (the moon
@@ -895,8 +904,14 @@ export class Environment {
       { radius: 146, count: 10, rock: 0x39468e, dark: 0x1c2658, snow: 0xffffff, baseH: 24, seed: 61, offset: 0.2, haze: 0.12 },  // closest — deepest + brightest
     ];
     // Day fog color = the atmospheric haze target (scene.fog is 0xbfe6ff).
-    const fogCol = new THREE.Color(0xbfe6ff);
+    const fogCol = new THREE.Color(this.trackId === 3 ? 0xffd6b7 : this.trackId === 4 ? 0xd9edff : 0xbfe6ff);
+    // The old 146/202/262m mountain rings physically crossed a 1.3km
+    // circuit. The closest band now starts OUTSIDE the entire road envelope,
+    // even after random radius scaling and rock base width.
+    const roadRadius = this._trackEnvelopeRadius || 100;
+    const safeInner = Math.max(360, (roadRadius + 95) / 0.88);
     for (const band of bands) {
+      const bandRadius = Math.max(band.radius, safeInner + (318 - band.radius) * 0.86);
       const group = new THREE.Group();
       // Per-band haze tint (mixed toward the sky/fog color) for the base discs.
       const hazeMat = new THREE.MeshBasicMaterial({
@@ -915,7 +930,7 @@ export class Environment {
         // Angle jitter breaks the even ring spacing — no two neighbors sit at
         // the same angular step, so the range never reads as repeated peaks.
         const a = (i / band.count + (rand() - 0.5) * 0.3) * Math.PI * 2 + band.offset;
-        const r = band.radius * (0.78 + rand() * 0.44);
+        const r = bandRadius * (0.93 + rand() * 0.14);
         let h;
         if (profile === 'dome') h = band.baseH * (0.5 + rand() * 0.5);       // low rounded hills
         else if (profile === 'butte') h = band.baseH * (0.9 + rand() * 0.85); // tall buttes
@@ -928,6 +943,10 @@ export class Environment {
         const sz = wide * (0.5 + rand() * 1.6);
         const cx = Math.cos(a) * r;
         const cz = Math.sin(a) * r;
+        // Rock bases are much wider than their centre points. Exclude the
+        // entire footprint plus a road-side buffer, not merely the centre.
+        const footprint = baseR * Math.max(sx, sz) * 1.4;
+        if (this._onTrack(cx, cz, footprint + 28)) continue;
         const yBase = this._gy(cx, cz) - 0.5;
 
         const seed = (band.seed * 7919 + i * 131) >>> 0;

@@ -269,9 +269,11 @@ export class KartPhysics {
     // Guardrail visual center = road half-width + 0.45m (TrackBuilder).
     // Reserve the kart's outer wheel radius before that center: constraining
     // only the kart origin let the outside wheel/body pierce the rail.
-    const railCenter = (T.roadWidth ?? 9) / 2 + 0.45;
-    const kartOuterRadius = 1.08;
-    const wallAt = Math.min(halfW + (T.roadEdge ?? 0.9), railCenter - kartOuterRadius);
+    const railCenter = (T.roadWidth ?? 9) / 2 + 0.60;
+    // Previously 1.08m reserved space while the guardrail only stood
+    // 0.45m beyond the road. Karts bounced inside invisible asphalt.
+    const kartOuterRadius = 0.72;
+    const wallAt = Math.min(halfW + 0.12, railCenter - kartOuterRadius);
     // AUDIT r18-FIX: off-road karts ride the rolling terrain — the path
     // samples are flat; beyond the corridor the field rolls ±5m and a kart
     // shoved into the grass would bury or float up to 5m without this.
@@ -496,15 +498,17 @@ export class KartPhysics {
     const lateralDist = _tmp.copy(s.position).sub(progressPoint).dot(postRight);
     if (Math.abs(lateralDist) > wallAt) {
       const overshoot = Math.abs(lateralDist) - wallAt;
-      s.position.addScaledVector(postRight, -Math.sign(lateralDist) * overshoot * 1.2);
-      kart._latVel = -lat * P.collisionBounce;
-      s.speed *= Math.max(0.2, 1 - overshoot * 0.65);
-      // steer the nose back toward the track center
-      s.heading = dampAngle(s.heading, Math.atan2(progressTan.x, progressTan.z), 8, dt);
-      kart._bounce = 1;
-      kart._bounceTimer = 0.3;
-      kart._scaleTarget = 0.92;
-      kart._scaleMs = Math.max(kart._scaleMs, 260);
+      // Correct only actual penetration. A 1.2x overshoot correction,
+      // severe speed penalties and rapid steering produced visible
+      // side-to-side jitter on iPhone at every curved guardrail.
+      s.position.addScaledVector(postRight, -Math.sign(lateralDist) * (overshoot + 0.015));
+      kart._latVel = -lat * Math.min(0.25, P.collisionBounce);
+      s.speed *= Math.max(0.82, 1 - overshoot * 0.12);
+      if (overshoot > 0.18) {
+        s.heading = dampAngle(s.heading, Math.atan2(progressTan.x, progressTan.z), 3, dt);
+        kart._bounce = Math.min(1, overshoot * 0.4);
+        kart._bounceTimer = 0.15;
+      }
     }
 
     // ---- height / gravity -----------------------------------------------------
