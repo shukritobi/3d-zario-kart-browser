@@ -5,8 +5,9 @@
  * keyboard input and the ?demo cinematic autopilot used by visual QA.
  */
 import { autoInstancing } from './perf/instancing.js';
-import { enterLandscape } from './ui/mobileLandscape.js';
+import { enterLandscape, setupOrientationPrompt } from './ui/mobileLandscape.js';
 if (navigator.maxTouchPoints > 0 || matchMedia('(pointer: coarse)').matches) document.body.classList.add('zario-mobile-stage');
+setupOrientationPrompt();
 import * as THREE from 'three';
 import { CONFIG } from './config.js';
 import { createScene } from './render/SceneManager.js';
@@ -229,6 +230,15 @@ const menu = new Menu({
 menu.restoreMute(); // persisted mute state (audit minor)
 const touch = new TouchControls({ onSteer: setTouchSteer, onItem: () => pressItem(), onPause: togglePause, onDrift: (b) => { touchDrift = b; } });
 const zarioControls = new ZarioControls({ touchRoot: touch.root, onItemDown: pressItem, onItemUp: releaseItem, onPause: togglePause });
+const advancedSettings = menu.root.querySelector('#zario-settings-panel');
+if (advancedSettings) {
+  const heading = document.createElement('strong');
+  heading.className = 'zario-input-heading';
+  heading.textContent = 'STEERING & CONTROLLER';
+  advancedSettings.append(heading, zarioControls.element);
+}
+// No floating gyroscope/grip buttons during races: reserve the lower
+// 30% for the steering and item buttons alone.
 // Menus, pause cards and race results must NEVER be blocked by game inputs.
 // Explicitly gate the floating control strip to the two playable states.
 onStateChange((state) => document.body.classList.toggle(

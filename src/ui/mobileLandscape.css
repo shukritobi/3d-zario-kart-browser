@@ -1,13 +1,34 @@
-/* Physically locking iOS orientation is not supported in web browsers.
-   Rotate the whole stage to a virtual landscape view when held portrait. */
-@media(orientation:portrait){
-  body.zario-mobile-stage {
-    position:fixed!important;left:50%!important;top:50%!important;
-    width:100dvh!important;height:100dvw!important;
-    transform:translate(-50%,-50%) rotate(90deg)!important;
-    transform-origin:50% 50%!important;overflow:hidden!important;
-    touch-action:manipulation;
+/* An ordinary Safari/Chrome tab on iOS cannot force device orientation.
+   Never rotate the body: doing so makes WebGL, fixed HUD and hit-testing use
+   inconsistent coordinate systems and leaves only sky visible in portrait. */
+body.zario-mobile-stage {
+  transform:none!important;
+  position:static!important;
+  left:auto!important;
+  top:auto!important;
+  width:100%!important;
+  height:100dvh!important;
+  overflow:hidden!important;
+}
+.zario-orientation-prompt {display:none}
+@media (orientation:portrait) and (pointer:coarse) {
+  .zario-orientation-prompt {
+    position:fixed;inset:0;z-index:2147483000;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:16px;text-align:center;padding:24px;box-sizing:border-box;
+    background:linear-gradient(145deg,#14213a,#243e70);
+    color:#fff;font:700 18px/1.35 system-ui,sans-serif;
+    user-select:none;
   }
-  body.zario-mobile-stage #app { width:100%;height:100%; }
-  body.zario-mobile-stage .zario-landscape-hint{display:none!important}
+  .zario-orientation-prompt .zario-rotate-icon {
+    width:62px;height:90px;border:5px solid #ffd166;border-radius:13px;
+    transform:rotate(90deg);box-shadow:0 0 0 6px #6cc9ff18;
+    position:relative;margin:20px;
+  }
+  .zario-orientation-prompt .zario-rotate-icon:after {
+    content:"";position:absolute;width:20px;height:4px;
+    background:#ffd166;bottom:6px;left:50%;transform:translateX(-50%);
+  }
+  .zario-orientation-prompt strong{font-size:clamp(22px,6vw,30px);letter-spacing:.01em}
+  .zario-orientation-prompt small{max-width:290px;font-size:14px;font-weight:500;color:#cbdcff}
 }

@@ -2356,3 +2356,76 @@ html, body {
   .sk3d-menu-card .sk3d-tagline{display:none}
   .sk3d-menu-card{gap:2px;padding:4px 10px}
 }
+
+
+/* ===== Landscape menu rebuild: explicit vertical rhythm, no inherited
+   18px gaps or browser-dependent flex squashing. ===== */
+.sk3d-menu {
+  width:100%;height:100%;overflow:hidden!important;
+  padding:0;box-sizing:border-box;
+}
+.sk3d-menu > .sk3d-menu-card {
+  box-sizing:border-box!important;
+  flex:0 1 auto;min-height:0!important;
+  width:min(540px,calc(100% - 28px))!important;
+  max-width:540px!important;max-height:calc(100% - 18px)!important;
+  padding:clamp(10px,2.5vh,22px) clamp(14px,3vw,26px)!important;
+  margin:0!important;gap:clamp(7px,1.5vh,13px)!important;
+  display:flex!important;flex-direction:column;align-items:center;justify-content:center;
+  overflow:hidden!important;text-align:center;
+  border-radius:24px;
+}
+.sk3d-menu-card > .sk3d-logo {display:flex;flex-direction:column;align-items:center;gap:4px;flex:none;width:100%;line-height:1.1!important;margin:0!important;padding:0!important}
+.sk3d-menu-card .sk3d-logo-line{
+  display:block!important;font-size:clamp(26px,6.3vh,44px)!important;
+  line-height:1.12!important;letter-spacing:.01em!important;
+  white-space:nowrap;
+  text-shadow:2px 2px 0 #1b2a41,-2px -2px 0 #1b2a41,0 4px 0 #1b2a41!important;
+}
+.sk3d-menu-card .sk3d-logo-sub{
+  display:block!important;transform:none!important;line-height:1.25!important;
+  font-size:clamp(9px,1.9vh,12px)!important;letter-spacing:.18em!important;
+  text-shadow:none!important;color:#2467a8!important;
+}
+.sk3d-menu-card > .sk3d-logo-strip {flex:none;width:105px!important;min-height:4px!important;height:4px!important;margin:0!important;box-shadow:none}
+.sk3d-menu-card > .sk3d-tagline {flex:none;margin:0!important;font-size:clamp(10px,2vh,13px)!important;line-height:1.2!important}
+.sk3d-menu-card > .sk3d-start-btn {
+  width:min(100%,390px)!important;flex:none;min-height:48px!important;
+  padding:6px 15px!important;margin:2px 0!important;
+  line-height:1!important;font-size:clamp(17px,3.3vh,23px)!important;
+}
+.sk3d-menu-card > .sk3d-menu-actions {
+  width:100%!important;max-width:470px;display:grid!important;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  gap:12px!important;flex:none;margin:1px 0!important;
+}
+.sk3d-menu-card .sk3d-action-btn {
+  width:100%!important;min-width:0!important;min-height:45px!important;
+  padding:8px 8px!important;font-size:clamp(12px,2.7vh,17px)!important;
+  line-height:1!important;flex:none!important;
+}
+.sk3d-menu-card > .sk3d-current-pick {
+  position:relative!important;flex:none;max-width:100%;min-height:20px;
+  font-size:clamp(11px,2vh,14px)!important;line-height:1.35!important;
+  margin:0!important;padding:0 4px!important;
+}
+.sk3d-menu-card > .zario-settings-toggle {
+  flex:none;min-height:38px!important;padding:6px 24px!important;
+  font-size:clamp(12px,2.3vh,14px)!important;line-height:1.2!important;
+  margin:0!important;
+}
+.sk3d-menu-card .zario-settings-panel{justify-content:flex-start!important;min-height:0;gap:13px!important}
+@media (max-height:470px) and (orientation:landscape) {
+  .sk3d-menu > .sk3d-menu-card{
+    padding:7px 16px!important;gap:5px!important;max-height:calc(100% - 10px)!important
+  }
+  .sk3d-menu-card > .sk3d-logo-strip,.sk3d-menu-card > .sk3d-tagline{display:none!important}
+  .sk3d-menu-card .sk3d-logo-line{font-size:clamp(23px,7vh,33px)!important}
+  .sk3d-menu-card > .sk3d-start-btn{min-height:40px!important}
+  .sk3d-menu-card .sk3d-action-btn{min-height:40px!important}
+  .sk3d-menu-card > .zario-settings-toggle{min-height:32px!important}
+}
+@media (max-height:320px) and (orientation:landscape) {
+  .sk3d-menu-card .sk3d-logo-sub {display:none!important}
+  .sk3d-menu-card > .sk3d-current-pick{font-size:10px!important}
+}

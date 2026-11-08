@@ -17,7 +17,7 @@ test('main menu never scrolls, and advanced settings remain accessible',async ({
   await expect(page.locator('.zario-settings-panel')).toBeHidden();
 });
 
-test('portrait mobile uses a landscape-shaped stage without page scrolling',async ({page})=>{
+test('portrait mobile asks for physical rotation without breaking rendering coordinates',async ({page})=>{
   await page.goto('/?quality=low');
   await page.waitForFunction(()=>!!window.__sk3d,null,{timeout:80000});
   const state=await page.evaluate(()=>{
@@ -26,8 +26,9 @@ test('portrait mobile uses a landscape-shaped stage without page scrolling',asyn
       pageOverflows:document.documentElement.scrollWidth>innerWidth+2||document.documentElement.scrollHeight>innerHeight+2};
   });
   if((await page.viewportSize()).width < (await page.viewportSize()).height){
-    expect(state.w).toBeGreaterThan(state.h);
-    expect(state.bodyTransform).not.toBe('none');
+    expect(state.h).toBeGreaterThan(state.w);
+    expect(state.bodyTransform).toBe('none');
+    await expect(page.locator('.zario-orientation-prompt')).toBeVisible();
     expect(state.pageOverflows).toBeFalsy();
   }
 });
