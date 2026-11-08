@@ -1,4 +1,4 @@
-import{M as R,O as E,B as A,F as _,S as f,U as v,V as n,W as m,H as g,N as U,C as B,a as T,b as d,A as D,c as F,R as y,d as N,e as z,L as O,f as L,g as I,h as V,i as Q,j as G}from"./three-core-BqDjzgJN.js";const w={name:"CopyShader",uniforms:{tDiffuse:{value:null},opacity:{value:1}},vertexShader:`
+import{M as R,O as E,B as A,F as _,S as f,U as v,V as n,W as m,H as g,N as U,C as B,a as T,b as d,A as D,c as F,R as y,d as N,e as z,L as O,f as L,g as I,h as V,i as Q,j as G}from"./three-core-CfPGxfwi.js";const w={name:"CopyShader",uniforms:{tDiffuse:{value:null},opacity:{value:1}},vertexShader:`
 
 		varying vec2 vUv;
 
@@ -199,4 +199,4 @@ import{M as R,O as E,B as A,F as _,S as f,U as v,V as n,W as m,H as g,N as U,C a
 			gl_FragColor = vec4( mix( texel.rgb, vec3( 1.0 - darkness ), dot( uv, uv ) ), texel.a );
 
 		}`};export{J as E,$ as O,Z as R,W as S,p as U,ee as V};
-//# sourceMappingURL=three-examples-C6dZBnQP.js.map
+//# sourceMappingURL=three-examples-B4I41M6I.js.map
