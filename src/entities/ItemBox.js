@@ -260,6 +260,7 @@ export class ItemBox {
     if (this.beam) this.beam.visible = true;
     if (this.ring) this.ring.visible = true;
     this.respawnTimer = 0;
+    this._clearShatter();
   }
 
   /**
@@ -268,6 +269,7 @@ export class ItemBox {
    * empty held-item slot), respawn countdown while consumed.
    */
   update(dt, karts, raceManager) {
+    this._updateShatter(dt);
     this.bobPhase += dt * CONFIG.items.boxBobSpeed;
     this.wobble += dt * 2.4;
 
@@ -342,19 +344,25 @@ export class ItemBox {
     const r = CONFIG.items.pickupRadius;
     const rr = r * r;
     for (const kart of list) {
-      if (kart.finished || kart.heldItem) continue;
+      if (kart.finished || (kart.heldItem && kart.heldItem2)) continue;
       const p = kartPos(kart);
       const dx = p.x - this.mesh.position.x;
       const dz = p.z - this.mesh.position.z;
       if (dx * dx + dz * dz < rr) {
-        raceManager?.pickupItem?.(kart);
-        this._consume();
+        const type=raceManager?.pickupItem?.(kart);
+        if (!type) continue;
+        this._consume(raceManager,kart,type);
         break;
       }
     }
   }
 
-  _consume() {
+  _consume(raceManager,kart,type) {
+    this._spawnShatter(raceManager?.scene);
+    raceManager?.particles?.emit?.('sparkle',this.mesh.position,{
+      count:22,speed:6,size:0.27,color:0x75e5ff,gravity:-0.8
+    });
+    if (kart?.isPlayer) raceManager?.hud?.animateItemPickup?.(this.mesh.position,type,raceManager.camera);
     this.active = false;
     // AUDIT: pickup pop — o box encolhe em ~0.18s (MK8D comprime no grab)
     // em vez de sumir instantaneamente; beam/ring morrem junto.
@@ -363,6 +371,63 @@ export class ItemBox {
     if (this.beam) this.beam.visible = false;
     if (this.ring) this.ring.visible = false;
     this.respawnTimer = CONFIG.game.itemBoxRespawnMs ?? CONFIG.items.itemBoxRespawnMs ?? 6000;
+  }
+
+  _clearShatter() {
+    if (!this._shatter) return;
+    const effect=this._shatter;
+    effect.scene?.remove(effect.mesh);
+    effect.mesh.geometry.dispose();
+    effect.mesh.material.dispose();
+    this._shatter=null;
+  }
+
+  _spawnShatter(scene) {
+    this._clearShatter();
+    if (!scene) return;
+    // One instanced draw call for all fragments, no per-particle DOM/GPU calls.
+    const geo=new THREE.BoxGeometry(this.size*0.26,this.size*0.26,this.size*0.26);
+    const mat=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0.95});
+    const mesh=new THREE.InstancedMesh(geo,mat,12);
+    const palette=[0x66dffd,0xe8f8ff,0xffd166,0xf58ae1];
+    const dummy=new THREE.Object3D();
+    for(let i=0;i<12;i++) {
+      mesh.setColorAt(i,new THREE.Color(palette[i%palette.length]));
+      dummy.position.copy(this.mesh.position);
+      dummy.scale.setScalar(1);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i,dummy.matrix);
+    }
+    mesh.instanceMatrix.needsUpdate=true;
+    if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;
+    mesh.frustumCulled=false;
+    scene.add(mesh);
+    this._shatter={scene,mesh,time:0,origin:this.mesh.position.clone(),dummy};
+  }
+
+  _updateShatter(dt) {
+    const fx=this._shatter;
+    if(!fx)return;
+    fx.time+=dt;
+    const t=Math.min(1,fx.time/.56);
+    const dummy=fx.dummy;
+    for(let i=0;i<12;i++){
+      const a=i*Math.PI*2/12;
+      const speed=1.3+(i%4)*0.6;
+      const radial=(0.25+speed*t)*this.size;
+      dummy.position.set(
+        fx.origin.x+Math.cos(a)*radial,
+        fx.origin.y+1.9*t-3*t*t+(i%3)*0.12,
+        fx.origin.z+Math.sin(a)*radial
+      );
+      dummy.rotation.set(t*5*(i%2?1:-1),a+t*4,t*4);
+      dummy.scale.setScalar(Math.max(0.005,1-t*t));
+      dummy.updateMatrix();
+      fx.mesh.setMatrixAt(i,dummy.matrix);
+    }
+    fx.mesh.instanceMatrix.needsUpdate=true;
+    fx.mesh.material.opacity=Math.max(0,1-t);
+    if(t>=1)this._clearShatter();
   }
 }
 

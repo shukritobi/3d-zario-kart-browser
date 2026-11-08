@@ -276,6 +276,52 @@ export class HUD {
     document.body.appendChild(this.root);
   }
 
+
+  /** Item acquisition: glowing pickup flies to the touch ammo button.
+   *  The original box itself breaks into instanced 3D shards in ItemBox. */
+  animateItemPickup(worldPosition,type,camera) {
+    const dest=document.querySelector('.sk3d-touch-item') || this.root.querySelector('.sk3d-item-slot');
+    if(!dest||!camera||!worldPosition)return;
+    const target=dest.getBoundingClientRect();
+    const origin=worldPosition.clone();
+    camera.updateMatrixWorld();
+    origin.project(camera);
+    const canvas=document.querySelector('#app canvas');
+    const viewport=canvas?.getBoundingClientRect()||{left:0,top:0,width:innerWidth,height:innerHeight};
+    let x=viewport.left+(origin.x*0.5+0.5)*viewport.width;
+    let y=viewport.top+(-origin.y*0.5+0.5)*viewport.height;
+    x=Math.max(24,Math.min(innerWidth-24,x));
+    y=Math.max(24,Math.min(innerHeight-24,y));
+    const targetX=target.left+target.width/2;
+    const targetY=target.top+target.height/2;
+    const fly=document.createElement('span');
+    fly.className='zario-item-fly';
+    fly.textContent=ITEM_ICONS[type]||'✨';
+    fly.setAttribute('aria-hidden','true');
+    fly.style.left=x+'px';
+    fly.style.top=y+'px';
+    document.body.appendChild(fly);
+    const reduce=matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+    if(reduce||typeof fly.animate!=='function') {
+      fly.remove();
+    }else{
+      const dx=targetX-x,dy=targetY-y;
+      const anim=fly.animate([
+        {transform:'translate(-50%,-50%) scale(1.2)',opacity:0.1,offset:0},
+        {transform:'translate(-50%,-75%) scale(1.65)',opacity:1,offset:0.25},
+        {transform:'translate(calc(-50% + '+(dx*.55)+'px),calc(-75% + '+(dy*.55)+'px)) scale(1)',opacity:1,offset:0.62},
+        {transform:'translate(calc(-50% + '+dx+'px),calc(-50% + '+dy+'px)) scale(.32)',opacity:.25,offset:1},
+      ],{duration:620,easing:'cubic-bezier(.18,.7,.3,1)',fill:'forwards'});
+      anim.onfinish=()=>fly.remove();
+      anim.oncancel=()=>fly.remove();
+    }
+    const slot=this.root.querySelector('.sk3d-item-slot');
+    slot?.classList.remove('zario-item-arrived');
+    void slot?.offsetWidth;
+    slot?.classList.add('zario-item-arrived');
+    setTimeout(()=>slot?.classList.remove('zario-item-arrived'),700);
+  }
+
   buildSpeedometer() {
     const wrap = document.createElement('div');
     wrap.className = 'sk3d-speedo';

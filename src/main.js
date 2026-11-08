@@ -201,6 +201,7 @@ const particles = new ParticleSystem(scene);
 const skids = new SkidMarks(scene);
 const raceManager = new RaceManager(scene, camera);
 const hud = new HUD(track);
+raceManager.hud = hud; // player item-box bursts fly toward HUD ammo button
 // AUDIT r3 dual-slot: the HUD's mini reserve slot is clickable — the touch
 // counterpart to the Tab swap key (Swap itself runs in Kart.swapHeldItems;
 // this just feeds it the click).

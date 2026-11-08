@@ -2524,3 +2524,18 @@ html, body {
   .sk3d-hud .sk3d-hud-bottom-right{top:67px!important}
   .sk3d-hud .sk3d-route-cue{top:42px!important}
 }
+
+
+/* Item-box shatter to ammunition: brief UI arc toward the ITEM thumb. */
+.zario-item-fly{
+  position:fixed;z-index:120000;pointer-events:none;
+  font-size:clamp(28px,7vh,42px);line-height:1;
+  filter:drop-shadow(0 0 10px #ffe876) drop-shadow(0 2px 5px #081734);
+  will-change:transform,opacity;
+}
+.zario-item-arrived{animation:zario-item-arrived .53s ease-out!important}
+@keyframes zario-item-arrived{
+  0%{filter:drop-shadow(0 0 0 #ffdc65);box-shadow:0 0 0 #ffdc65}
+  45%{filter:drop-shadow(0 0 12px #ffdc65);box-shadow:0 0 22px 7px #ffdc658c}
+  100%{filter:none;box-shadow:none}
+}
