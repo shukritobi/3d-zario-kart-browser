@@ -197,6 +197,7 @@ if (TRACK_ID === 2) {
 bootOverlay.setStage('loading race systems', 0.68);
 if (TEST) postfx.enabled = false; // software GL runs ~30x faster without bloom
 const audio = new AudioManager();
+window.__zarioAudioStatus = () => audio.diagnostics();
 const particles = new ParticleSystem(scene);
 const skids = new SkidMarks(scene);
 const raceManager = new RaceManager(scene, camera);
@@ -859,6 +860,10 @@ function scheduleDeferredKartDisposals() {
 // in one task. Schedule it after the menu paint so the button can acknowledge
 // the click; the heavy body remains exactly once and double-clicks are ignored.
 function startRace() {
+  // Must run during the start button's user activation, not in the deferred
+  // startRaceHeavy() callback; Safari will otherwise keep WebAudio suspended.
+  audio.init();
+  audio.resume();
   enterLandscape();
   if (startRacePending) return;
   startRacePending = true;

@@ -68,6 +68,10 @@ export class AudioManager {
     this._crowd = null;               // crowd ambience graph
     this._crowdProximity = 0;         // 0..1 grandstand proximity (wash boost)
     this._lastCheerAt = 0;            // crowdCheer cooldown timestamp (ms)
+    // iPhone audio graphs are deliberately smaller to prevent long stalls
+    // constructing a stereo impulse reverb plus many waveshapers on WebKit.
+    this._lowPowerMobile = typeof navigator !== 'undefined' &&
+      (/iPhone|iPod/i.test(navigator.userAgent) || /ZarioLiteAudio/i.test(navigator.userAgent));
 
     this._unlock = () => this.init();
     this._attachUnlock();
@@ -115,10 +119,23 @@ export class AudioManager {
       console.warn('[AudioManager] WebAudio is not available in this browser.');
       return null;
     }
-    this._ctx = new Ctx();
+    this._ctx = new Ctx({ latencyHint: 'interactive' });
+    // iOS requires resume during the trusted tap, before expensive CPU work.
+    if (this._ctx.state !== 'running') this._ctx.resume().catch(() => {});
     this._master = this._ctx.createGain();
     this._master.gain.value = this._muted ? 0 : this._volume;
 
+    if (this._lowPowerMobile) {
+      const limiter = this._ctx.createDynamicsCompressor();
+      limiter.threshold.value = -12;
+      limiter.knee.value = 10;
+      limiter.ratio.value = 5;
+      limiter.attack.value = 0.003;
+      limiter.release.value = 0.15;
+      this._master.connect(limiter);
+      limiter.connect(this._ctx.destination);
+      this._mobileLimiter = limiter;
+    } else {
     // --- EQ (subtractive + low-end body + presence) ---------------------
     const eq = this._ctx.createBiquadFilter();
     eq.type = 'highpass';
@@ -192,6 +209,7 @@ export class AudioManager {
     wetTone.connect(reverbWet);
     reverbWet.connect(comp); // wet joins the glue compressor input
     this._reverbSend = reverbSend;
+    }
 
     // Apply engine loops remembered before init().
     for (const [kartId, pending] of this._pendingEngine) {
@@ -255,9 +273,22 @@ export class AudioManager {
   }
 
   _resume() {
-    if (this._ctx && this._ctx.state === 'suspended') {
+    // Safari reports 'interrupted' after a phone call, browser backgrounding
+    // or Control Center. A trusted touch must retry resume in either state.
+    if (this._ctx && this._ctx.state !== 'running' && this._ctx.state !== 'closed') {
       this._ctx.resume().catch(() => {});
     }
+  }
+
+  diagnostics() {
+    return {
+      state: this._ctx?.state ?? 'not-started',
+      muted: !!this._muted,
+      masterVolume: this._volume,
+      lowPowerMobile: this._lowPowerMobile,
+      musicActive: !!(this._music || this._menuMusic),
+      engineCount: this._engineLoops.size,
+    };
   }
 
   /** Pause the whole AudioContext (tab hidden). Quality gate: audio lifecycle. */
@@ -460,6 +491,9 @@ export class AudioManager {
    * @param {Object} [pose] { x, z, heading? } kart world position (y unused).
    */
   setEngineLoop(kartId, speed01, pose = null, vol = 1) {
+    // Render the player's own motor only on iPhones. Other engines have
+    // multiple oscillator/filter nodes each and can overwhelm small phones.
+    if (this._lowPowerMobile && kartId !== 'player') return;
     const s = Math.max(0, Math.min(1, speed01));
     const v = Math.max(0, Math.min(1, vol));
     if (!this._ctx || !this._master) {
