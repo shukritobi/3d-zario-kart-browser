@@ -465,6 +465,7 @@ export class RaceManager {
             // the Lakitu feedback (was _onRescue: no such hook, silent no-op).
             kart.heldItem = null;
             kart.heldItem2 = null;
+            this.onDiagnosticsEvent?.('rescue',{reason:'outside-track-bounds',player:kart===this.player,progress:st.progress01,x:pR.x,z:pR.z});
             kart._onRescued?.();
           }
         }
@@ -496,6 +497,7 @@ export class RaceManager {
             // shouldn't keep a free shield/shell.
             kart.heldItem = null;
             kart.heldItem2 = null;
+            this.onDiagnosticsEvent?.('rescue',{reason:'stationary-off-road',player:kart===this.player,progress:st.progress01,x:p.x,z:p.z});
             kart._onRescued?.();
             if (kart === this.player && typeof window !== 'undefined' && window.__sk3d?.addShake) {
               window.__sk3d.addShake(0.3, 0.3);
@@ -567,6 +569,10 @@ export class RaceManager {
         a.state.position.z -= nz * pushA;
         b.state.position.x += nx * pushB;
         b.state.position.z += nz * pushB;
+        if ((a===this.player||b===this.player) && this.elapsed-(this._lastDiagnosticsContactAt??-Infinity)>.4) {
+          this._lastDiagnosticsContactAt=this.elapsed;
+          this.onDiagnosticsEvent?.('contact',{distance:d,relativeSpeed:relSpeed,pushA,pushB});
+        }
         // Finished karts are obstacles, not pinballs: never accelerate them.
         if (!a.finished) a.nudge?.({ x: -nx, y: 0, z: -nz });
         if (!b.finished) b.nudge?.({ x: nx, y: 0, z: nz });

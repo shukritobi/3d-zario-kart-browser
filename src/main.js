@@ -12,6 +12,8 @@ import * as THREE from 'three';
 import { CONFIG } from './config.js';
 import { createScene } from './render/SceneManager.js';
 import { GameLoop } from './game/GameLoop.js';
+import { RaceDiagnostics } from './game/RaceDiagnostics.js';
+import { PerformanceGovernor } from './render/PerformanceGovernor.js';
 import { setState, getState, STATES, onStateChange } from './game/GameState.js';
 import { buildTrack, TRACK_PATH, CITY_PATH } from './track/TrackBuilder.js';
 import { CANYON_PATH, SKY_PATH } from './track/ExtraTracks.js';
@@ -201,6 +203,29 @@ window.__zarioAudioStatus = () => audio.diagnostics();
 const particles = new ParticleSystem(scene);
 const skids = new SkidMarks(scene);
 const raceManager = new RaceManager(scene, camera);
+const raceDiagnostics = new RaceDiagnostics();
+const autoGraphics = new PerformanceGovernor({
+  initial:renderer.getPixelRatio(),min:Math.min(.85,renderer.getPixelRatio()),
+  max:renderer.getPixelRatio(),
+  enabled:(/iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+    (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1)) &&
+    !qualityProfile.info.software &&
+    !new URLSearchParams(location.search).has('quality') && !TEST,
+});
+raceManager.onDiagnosticsEvent=(type,fields)=>raceDiagnostics.event(type,fields);
+window.__zarioAdaptiveGraphics=()=>autoGraphics.status();
+window.__zarioDiagnostics={
+  status:()=>raceDiagnostics.snapshot(),
+  exportJSON:()=>raceDiagnostics.exportJSON(),
+  clear:()=>raceDiagnostics.reset({trackId:TRACK_ID}),
+  download:()=>{
+    const url=URL.createObjectURL(new Blob([raceDiagnostics.exportJSON()],{type:'application/json'}));
+    const link=document.createElement('a');
+    link.href=url;link.download='zario-race-diagnostics-track-'+TRACK_ID+'.json';
+    document.body.appendChild(link);link.click();link.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),10000);
+  },
+};
 const hud = new HUD(track);
 raceManager.hud = hud; // player item-box bursts fly toward HUD ammo button
 // AUDIT r3 dual-slot: the HUD's mini reserve slot is clickable — the touch
@@ -258,6 +283,13 @@ if (advancedSettings) {
     }
   });
   advancedSettings.append(soundTest);
+  const exportRace=document.createElement('button');
+  exportRace.type='button';exportRace.className='sk3d-btn zario-export-race';
+  exportRace.textContent='⬇ EXPORT RACE DIAGNOSTICS';
+  exportRace.setAttribute('aria-label','Download race physics and performance diagnostics');
+  exportRace.style.cssText='align-self:center;min-height:42px;padding:7px 17px;background:#e0eefa;color:#1c3761;border:2px solid #5782ab;font:800 12px system-ui;border-radius:999px';
+  exportRace.addEventListener('click',()=>window.__zarioDiagnostics.download());
+  advancedSettings.append(exportRace);
 }
 // No floating gyroscope/grip buttons during races: reserve the lower
 // 30% for the steering and item buttons alone.
@@ -929,6 +961,7 @@ function startRaceInit() {
     const now = raceManager.elapsed;
     const lapMs = Math.round(Math.max(0, now - (playerKart._lastLapAt || 0)) * 1000);
     playerKart._lastLapAt = now;
+    raceDiagnostics.event('lap',{lap,lapMs});
     // R26: the grid sits ~0.5s before the line — that first crossing is race
     // start, not a completed lap. Sub-5s laps are physically impossible on
     // either track (shortest real laps run 8s+), so seed the timer silently
@@ -952,6 +985,13 @@ function startRaceInit() {
     audio,
     particles,
   });
+  raceDiagnostics.start({
+    trackId:TRACK_ID,trackLength:+track.length.toFixed(1),
+    cc:settings.cc,quality:qualityProfile.name,
+    device:/iPhone/i.test(navigator.userAgent)?'iphone':/iPad/i.test(navigator.userAgent)?'ipad':'other',
+  });
+  autoGraphics.reset();
+  playerKart._onPhysicsEvent=e=>raceDiagnostics.event(e.type,e);
   // DEMO autopilot owns the player kart (QA captures); RaceManager.restart()
   // preserves it via _playerAI instead of dropping it like a cruise controller.
   raceManager._playerAI = DEMO;
@@ -965,6 +1005,7 @@ function startRaceInit() {
     hud.showMessage(tip);
   }
   raceManager.onPlayerFinish = (place, time) => {
+    raceDiagnostics.event('finish',{place,time});
     // AUDIT MED: hide touch controls at FINISHED — the DRIFT button (z 120)
     // sat over the finish card (z 3) and stole taps from Race Again/Menu.
     touch.hide?.();
@@ -1046,6 +1087,11 @@ function restartRace() {
   // RaceManager.restart() (single source of truth — AUDIT FIX: the cruise
   // controller used to survive here and fight the player's input).
   raceManager.restart();
+  raceDiagnostics.start({
+    trackId:TRACK_ID,trackLength:+track.length.toFixed(1),
+    cc:settings.cc,quality:qualityProfile.name,restart:true,
+  });
+  autoGraphics.reset();
   applyDifficulty();  // re-apply (menu choices may have changed between races)
   applyPlayerStats(); // Kart.restart() wipes cruiseSpeed — restore the stat target
   skids.clear();
@@ -1391,6 +1437,17 @@ loop.start((dt, t) => {
       // AI controllers every frame — a second loop here DOUBLED item-use
       // accumulation (effective itemUseChancePerSec 2x) and re-ran steering.
       raceManager.update(dt);
+      raceDiagnostics.tick({
+        dt,player:playerKart,frameMs:loop.frameAverageMs,
+        audioState:audio.diagnostics().state,
+        pixelRatio:renderer.getPixelRatio(),calls:renderer.info.render.calls,
+      });
+      const newDpr=autoGraphics.update(loop.frameAverageMs,dt,true);
+      if(newDpr!==null){
+        renderer.setPixelRatio(newDpr);
+        postfx._onResize?.();
+        raceDiagnostics.event('pixelRatio',{dpr:newDpr,frameMs:loop.frameAverageMs});
+      }
       // AUDIT r8 (MK8D blue-shell dodge counterplay): collecting an item box
       // grants a short invincibility window — the classic spiny dodge (drive
       // into a box as it dives). Pickups happen inside raceManager.update, so
