@@ -24,6 +24,7 @@ import { lateralVelocityStep, playerDriftSteerRate } from './handling.js';
 // corridor — off-road karts must ride it or they bury/float on the hills.
 import { terrainHeight } from '../track/TrackBuilder.js';
 import { advanceLapCheckpoint } from './lapCheckpoints.js';
+import { horizontalDistanceSquared, projectTrackLattice } from './trackProjection.js';
 
 const SAMPLES = 384; // long tracks: maintain <=4m nearest-sample spacing // points around the loop for nearest-sample search
 
@@ -50,19 +51,22 @@ function ensureSamples(kart, track) {
   const path = track.path;
   const pos = [];
   const tan = [];
-  const len = [0];
+  const len = [];
   let total = 0;
   let prev = path.getPointAt(0);
   for (let i = 0; i < N; i++) {
     const t = i / N;
     const p = path.getPointAt(t);
     const tg = path.getTangentAt(t);
+    if (i > 0) total += p.distanceTo(prev);
     pos.push(p.clone());
     tan.push(new THREE.Vector3(tg.x, 0, tg.z).normalize());
-    if (i > 0) total += p.distanceTo(prev);
+    // len[i] must be the distance AT sample i. The previous code
+    // inserted an extra zero at len[0], shifting progress one waypoint.
     len.push(total);
     prev = p;
   }
+  total += prev.distanceTo(pos[0]); // include the loop-closing segment
   const samples = { track, N, pos, tan, len, total: Math.max(total, 0.001) };
   _sampleCache.set(track, samples);
   kart._samples = samples;
@@ -76,14 +80,14 @@ function nearestSample(kart, samples) {
   const start = ((kart._sampleIndex % N) + N) % N;
   const p = kart.state.position;
   let best = start;
-  let bestD = samples.pos[start].distanceToSquared(p);
+  let bestD = horizontalDistanceSquared(samples.pos[start], p);
   const RADIUS = samples.track?.isCity ? 40 : 14;
   for (let r = 1; r <= RADIUS; r++) {
     const i1 = (start + r) % N;
-    const d1 = samples.pos[i1].distanceToSquared(p);
+    const d1 = horizontalDistanceSquared(samples.pos[i1], p);
     if (d1 < bestD) { bestD = d1; best = i1; }
     const i2 = (start - r + N) % N;
-    const d2 = samples.pos[i2].distanceToSquared(p);
+    const d2 = horizontalDistanceSquared(samples.pos[i2], p);
     if (d2 < bestD) { bestD = d2; best = i2; }
   }
   // AUDIT r11 (FECO BUG REPORT — AI drives backwards): the >30m full-scan
@@ -110,7 +114,7 @@ function nearestSample(kart, samples) {
     let bestAlt = -1;
     let bestAltD = Infinity;
     for (let i = 0; i < N; i++) {
-      const d = samples.pos[i].distanceToSquared(p);
+      const d = horizontalDistanceSquared(samples.pos[i], p);
       if (d < bestD) { bestD = d; best = i; }
       if (Math.abs(st.speed || 0) > 2) {
         const dot = samples.tan[i].x * fwd.x + samples.tan[i].z * fwd.y;
@@ -119,21 +123,11 @@ function nearestSample(kart, samples) {
     }
     if (bestAlt >= 0) { best = bestAlt; bestD = bestAltD; }
   }
-  kart._sampleIndex = best;
-
-  const idx = best;
-  const sp = samples.pos[idx];
-  const tan = samples.tan[idx];
-  const right = _right.set(tan.z, 0, -tan.x);
-  const lateralDist = _tmp.copy(p).sub(sp).dot(right);
-  return {
-    idx,
-    t: idx / N,
-    progress01: samples.len[idx] / samples.total,
-    lateralDist,
-    groundY: sp.y,
-    tan,
-  };
+  // Project onto the continuous pair of neighboring road segments rather
+  // than snapping the road height and heading to a ~3m-wide waypoint.
+  const near = projectTrackLattice(samples, best, p);
+  kart._sampleIndex = near?.idx ?? best;
+  return near;
 }
 
 function roadHalfWidth(track, t) {
@@ -265,11 +259,10 @@ export class KartPhysics {
     // Guardrail visual center = road half-width + 0.45m (TrackBuilder).
     // Reserve the kart's outer wheel radius before that center: constraining
     // only the kart origin let the outside wheel/body pierce the rail.
-    const railCenter = (T.roadWidth ?? 9) / 2 + 0.60;
-    // Previously 1.08m reserved space while the guardrail only stood
-    // 0.45m beyond the road. Karts bounced inside invisible asphalt.
-    const kartOuterRadius = 0.72;
-    const wallAt = Math.min(halfW + 0.12, railCenter - kartOuterRadius);
+    // Use the WIDTH OF THIS ROAD SEGMENT, not CONFIG.track.roadWidth.
+    // Wide straights previously inherited the narrow section's invisible
+    // wall, bouncing a kart ~1.5m inside the visible asphalt.
+    const wallAt = Math.max(0.9, halfW - 0.16);
     // AUDIT r18-FIX: off-road karts ride the rolling terrain — the path
     // samples are flat; beyond the corridor the field rolls ±5m and a kart
     // shoved into the grass would bury or float up to 5m without this.
@@ -473,7 +466,11 @@ export class KartPhysics {
     kart._latVel = lat;
 
     // ---- integrate position ---------------------------------------------------
-    _move.copy(fwd).multiplyScalar(s.speed).addScaledVector(right, lat);
+    // Integrate the newly steered heading, not the heading from BEFORE the
+    // steering step. This removes one physics tick of directional lag.
+    _fwd.set(Math.sin(s.heading), 0, Math.cos(s.heading));
+    _right.set(Math.cos(s.heading), 0, -Math.sin(s.heading));
+    _move.copy(_fwd).multiplyScalar(s.speed).addScaledVector(_right, lat);
     s.position.addScaledVector(_move, dt);
     if (kart._nudgeVel && kart._nudgeVel.lengthSq() > 1e-6) {
       s.position.addScaledVector(kart._nudgeVel, dt);
@@ -487,13 +484,22 @@ export class KartPhysics {
     // pure nearest-point lookup can select the wrong segment and trigger a
     // false rail bounce while the kart is visually centered.
     const progressGuess = ((s.progress01 + (s.speed * dt) / samples.total) % 1 + 1) % 1;
-    const progressIdx = Math.round(progressGuess * samples.N) % samples.N;
-    const progressPoint = samples.pos[progressIdx];
-    const progressTan = samples.tan[progressIdx];
+    // Continuous post-integration boundary avoids ±1 sample oscillations
+    // in the normal on hairpins, which looked like an invisible rock.
+    const progressPoint = track.path.getPointAt(progressGuess);
+    const progressTan = track.path.getTangentAt(progressGuess);
     const postRight = _right.set(progressTan.z, 0, -progressTan.x);
     const lateralDist = _tmp.copy(s.position).sub(progressPoint).dot(postRight);
+    kart._wallReportCooldown = Math.max(0, (kart._wallReportCooldown || 0) - dt);
     if (Math.abs(lateralDist) > wallAt) {
       const overshoot = Math.abs(lateralDist) - wallAt;
+      if (overshoot > 0.06 && kart._wallReportCooldown <= 0) {
+        kart._onPhysicsEvent?.({
+          type:'wall', overshoot, speed:s.speed, progress:s.progress01,
+          lateral:lateralDist, wallAt,
+        });
+        kart._wallReportCooldown = 0.4;
+      }
       // Correct only actual penetration. A 1.2x overshoot correction,
       // severe speed penalties and rapid steering produced visible
       // side-to-side jitter on iPhone at every curved guardrail.
