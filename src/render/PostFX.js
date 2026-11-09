@@ -137,6 +137,14 @@ export class PostFX {
 
   _onResize() {
     if (!this.composer) return;
+    // EffectComposer has its OWN cached DPR. Calling only renderer.setPixelRatio
+    // leaves its full-resolution offscreen buffers unchanged, so dynamic
+    // resolution saves almost no GPU time. Resize both in lockstep.
+    const dpr=this.renderer.getPixelRatio();
+    if (typeof this.composer.setPixelRatio === 'function' &&
+        Math.abs((this.composer._pixelRatio || 1) - dpr) > 0.01) {
+      this.composer.setPixelRatio(dpr);
+    }
     this.composer.setSize(window.innerWidth, window.innerHeight);
   }
 
