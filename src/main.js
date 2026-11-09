@@ -273,13 +273,17 @@ if (advancedSettings) {
   soundTest.style.cssText = 'align-self:center;min-height:44px;padding:8px 24px;background:#235c85;color:#fff;font:800 13px system-ui;letter-spacing:.08em';
   soundTest.addEventListener('click', () => {
     audio.init();
-    audio.resume();
+    // Resume is invoked synchronously in the click's trusted user gesture;
+    // only then inspect the settled state. iOS can resolve asynchronously.
+    const attempt=audio.resume();
     if (audio.muted) {
-      soundTest.textContent = '🔇 SOUND IS MUTED';
+      soundTest.textContent='🔇 SOUND IS MUTED';
     } else {
-      audio.play('uiSelect', {volume:0.85});
-      const state=audio.diagnostics().state;
-      soundTest.textContent = state === 'running' ? '🔊 SOUND PLAYING' : '🔊 RETRY AUDIO';
+      Promise.resolve(attempt).then(()=>{
+        const state=audio.diagnostics().state;
+        if(state==='running')audio.play('uiSelect',{volume:.85});
+        soundTest.textContent=state==='running'?'🔊 SOUND PLAYING':'🔊 TAP AGAIN TO RETRY';
+      });
     }
   });
   advancedSettings.append(soundTest);
@@ -336,6 +340,11 @@ let aiScreechAcc = 0;    // AI drift screech accumulator (v4 F5)
 let hudIdleT = 0;        // AUDIT imersão R11: auto-hide do HUD no touch
 let dustAcc = 0;         // off-road dust accumulator
 let turboParticleAcc = 0; // accumulator: burst once per 0.1s while turbo-boosting
+// Audio on iPhone: one player engine + two closest rivals, recalculated every
+// 2.5s. Building five remote AI oscillator graphs wasted DSP time and made
+// some phones intermittently silent or sluggish.
+let aiAudioSelectionT=0;
+let aiAudioNearest=new Set();
 
 // Difficulty/accessibility settings (audit r3): refreshed by applyDifficulty()
 // at every race start from the menu's live choices (window.__sk3d*).
@@ -1083,6 +1092,7 @@ function togglePause() {
 
 function restartRace() {
   audio.clearEngineLoops(); // restart engine sounds from scratch (no echo/doubling)
+  aiAudioSelectionT=0;aiAudioNearest.clear();
   // The finish-cruise AIController on the player kart is dropped inside
   // RaceManager.restart() (single source of truth — AUDIT FIX: the cruise
   // controller used to survive here and fight the player's input).
@@ -1128,6 +1138,7 @@ function gotoMenu() {
   menu.show();
   touch.hide?.(); // AUDIT FIX: touch buttons floated over the menu card
   audio.clearEngineLoops();
+  aiAudioSelectionT=0;aiAudioNearest.clear();
 }
 
 // Pause overlay is tappable ("tap to resume" — audit UX-F6).
@@ -1572,13 +1583,29 @@ loop.start((dt, t) => {
         }
       }
     }
+    if (audio._lowPowerMobile) {
+      aiAudioSelectionT -= dt;
+      if (aiAudioSelectionT <= 0) {
+        aiAudioSelectionT = 2.5;
+        let first=-1,second=-1,near1=Infinity,near2=Infinity;
+        const playerPos=playerKart.state.position;
+        for(let i=0;i<aiKarts.length;i++){
+          const ap=aiKarts[i].state.position;
+          const dx=ap.x-playerPos.x,dz=ap.z-playerPos.z,d2=dx*dx+dz*dz;
+          if(d2<near1){second=first;near2=near1;first=i;near1=d2}
+          else if(d2<near2){second=i;near2=d2}
+        }
+        aiAudioNearest=new Set([first,second]);
+        for(let i=0;i<aiKarts.length;i++){
+          if(!aiAudioNearest.has(i))audio.removeEngineLoop('ai'+i);
+        }
+      }
+    }
     for (let i = 0; i < aiKarts.length; i++) {
-      const s01 = Math.min(1, Math.abs(aiKarts[i].state.speed) / CONFIG.physics.maxSpeed);
-      const ap = aiKarts[i].state.position;
-      // AUDIT R55: velocidade REAL (o *0.35 antigo era hack de pitch — o AI
-      // soava 35% da velocidade real) + vol=0.28 (rivais distantes; o ganho
-      // espacial ainda rola off com a distância em _updateSpatial).
-      audio.setEngineLoop('ai' + i, s01, { x: ap.x, z: ap.z, heading: aiKarts[i].state.heading }, 0.28);
+      if(audio._lowPowerMobile&&!aiAudioNearest.has(i))continue;
+      const s01=Math.min(1,Math.abs(aiKarts[i].state.speed)/CONFIG.physics.maxSpeed);
+      const ap=aiKarts[i].state.position;
+      audio.setEngineLoop('ai'+i,s01,{x:ap.x,z:ap.z,heading:aiKarts[i].state.heading},0.28);
     }
     // Tire skid marks: both rears while drifting (player + AI).
     for (let i = 0; i < raceManager.karts.length; i++) {

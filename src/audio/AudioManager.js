@@ -73,8 +73,15 @@ export class AudioManager {
     this._lowPowerMobile = typeof navigator !== 'undefined' &&
       (/iPhone|iPod/i.test(navigator.userAgent) || /ZarioLiteAudio/i.test(navigator.userAgent));
 
+    this._resumeAttempts=0;
+    this._resumeFailures=0;
+    this._lastAudioError=null;
     this._unlock = () => this.init();
     this._attachUnlock();
+    // iOS can return from the back/forward cache without a visibilitychange.
+    // Retry audio then, and on the next gesture if Safari still blocks it.
+    this._pageShow=()=>{if(!document.hidden)this._resume();};
+    window.addEventListener('pageshow',this._pageShow);
     // Menu music follows the game state (audit r3): a calm loop owns the
     // title screen, the race arrangement owns COUNTDOWN→FINISHED, and a
     // fresh COUNTDOWN resets the intensity arc (a previous race may have
@@ -273,10 +280,24 @@ export class AudioManager {
   }
 
   _resume() {
-    // Safari reports 'interrupted' after a phone call, browser backgrounding
-    // or Control Center. A trusted touch must retry resume in either state.
-    if (this._ctx && this._ctx.state !== 'running' && this._ctx.state !== 'closed') {
-      this._ctx.resume().catch(() => {});
+    // Safari reports 'interrupted' after a phone call or Control Center.
+    // Surface failures for the Settings audio retry button and diagnostics.
+    const ctx=this._ctx;
+    if(!ctx||ctx.state==='running'||ctx.state==='closed')return Promise.resolve(ctx?.state||'not-started');
+    this._resumeAttempts++;
+    try{
+      return Promise.resolve(ctx.resume()).then(()=>{
+        this._lastAudioError=null;
+        return ctx.state;
+      }).catch(err=>{
+        this._resumeFailures++;
+        this._lastAudioError=String(err?.message||err).slice(0,120);
+        return ctx.state;
+      });
+    }catch(err){
+      this._resumeFailures++;
+      this._lastAudioError=String(err?.message||err).slice(0,120);
+      return Promise.resolve(ctx.state);
     }
   }
 
@@ -288,6 +309,9 @@ export class AudioManager {
       lowPowerMobile: this._lowPowerMobile,
       musicActive: !!(this._music || this._menuMusic),
       engineCount: this._engineLoops.size,
+      resumeAttempts:this._resumeAttempts,
+      resumeFailures:this._resumeFailures,
+      lastError:this._lastAudioError,
     };
   }
 
@@ -300,7 +324,7 @@ export class AudioManager {
 
   /** Resume the AudioContext after the tab becomes visible again. */
   resume() {
-    this._resume();
+    return this._resume();
   }
 
   _attachUnlock() {
@@ -762,6 +786,9 @@ export class AudioManager {
    * clearEngineLoops() (race restart / menu).
    */
   _startCrowd() {
+    // The crowd's two noise filters and LFO are not essential to gameplay,
+    // and avoiding an always-on audio graph reduces iPhone audio load.
+    if (this._lowPowerMobile) return;
     if (!this._ctx || !this._master) return;
     if (!this._crowd) this._createCrowd();
     const t = this._ctx.currentTime;
@@ -944,6 +971,7 @@ export class AudioManager {
 
   destroy() {
     this._detachUnlock();
+    window.removeEventListener('pageshow',this._pageShow);
     this.stopMusic();
     this.stopMenuMusic();
     this.clearEngineLoops();
