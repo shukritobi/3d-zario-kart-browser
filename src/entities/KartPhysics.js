@@ -525,6 +525,7 @@ export class KartPhysics {
     //    with a cooldown so the rising ramp surface does not immediately re-ground
     //    the kart on the next frame.
     const baseGroundY = near.groundY + kart.rideHeight;
+    s.groundY = baseGroundY;
     kart._rampLaunchCooldown = Math.max(0, (kart._rampLaunchCooldown || 0) - dt);
     let rampLift = 0;
     let onRampNow = false;

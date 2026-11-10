@@ -132,6 +132,7 @@ export class Kart {
       progress01: 0,
       finished: false,
       vY: 0,
+      groundY: startPosition ? startPosition.y : 0,
 
       wrongWayTimer: 0,
 

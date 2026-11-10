@@ -384,7 +384,13 @@ export class Menu {
       if (element) panel.append(element);
     }
     const picked = card.querySelector('.sk3d-current-pick');
-    picked?.after(toggle);
+    const subRow = card.querySelector('.sk3d-menu-actions-sub');
+    if (subRow) {
+      subRow.prepend(toggle);
+      picked?.after(subRow);
+    } else {
+      picked?.after(toggle);
+    }
     card.append(panel);
     const showPanel = (show) => {
       panel.classList.toggle('sk3d-hidden', !show);

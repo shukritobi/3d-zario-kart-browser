@@ -193,3 +193,156 @@ test('Mario Kart DS Music Engine: all 6 race tracks, Menu Cruise, and Starman Hy
   assert.equal(STAR_TRACK.bpm, 178, 'Super Star Invincibility theme should run at 178 BPM');
   assert.equal(STAR_TRACK.leadPattern.length, 32, 'Super Star theme should have the 32-step Starman riff');
 });
+
+test('Ramp & Trick Camera Anti-Dizziness: kart.state.groundY tracks road baseline and horizontal heading never flips during 360° mid-air trick', () => {
+  const scene = new THREE.Scene();
+  const track = buildTrack(scene, TRACK_PATH, 1);
+  const ramp = track.ramps[0];
+  const rDir = ramp.dir.clone().setY(0).normalize();
+  const heading = Math.atan2(rDir.x, rDir.z);
+
+  const startPos = ramp.point.clone().addScaledVector(rDir, -4.0);
+  startPos.y = ramp.point.y || 0;
+
+  const kart = new Kart({
+    character: CONFIG.kart.characters[0],
+    isPlayer: true,
+    startPosition: startPos,
+    startHeading: heading,
+  });
+  kart.state.speed = 32;
+
+  let sawAirborneTrick = false;
+  for (let i = 0; i < 65; i++) {
+    kart.setControls({ steer: 0, throttle: 1, brake: false, drift: true });
+    kart.update(1 / 60, { track });
+    if (kart._trickAnimT > 0.1) sawAirborneTrick = true;
+    assert.equal(typeof kart.state.groundY, 'number', 'kart.state.groundY must always be populated for steady camera anchoring');
+    const airLift = Math.max(0, kart.state.position.y - kart.state.groundY);
+    const camAnchorY = kart.state.groundY + airLift * 0.25;
+    // Camera vertical anchor should only lift by 25% of jump height so horizon stays level
+    assert.ok(camAnchorY <= kart.state.groundY + airLift * 0.25 + 1e-5);
+    // Horizontal camera forward vector derived from kart.state.heading must stay aligned with ramp direction
+    // even while kart.group.rotation.x / z spins 360° during a trick!
+    const camFwd = new THREE.Vector3(Math.sin(kart.state.heading), 0, Math.cos(kart.state.heading));
+    assert.equal(camFwd.y, 0, 'Chase camera forward vector must stay strictly horizontal (y = 0)');
+    assert.ok(camFwd.dot(rDir) > 0.95, 'Chase camera must never whip backward during ramp pitch or 360° trick flip');
+  }
+  assert.ok(sawAirborneTrick, 'Kart should perform a mid-air trick during the ramp jump while camera stays steady');
+});
+
+test('iPhone Controller UI & UX: locked landscape D-pad layout, portrait-to-landscape auto-rotation, and anti-double-tap zoom/highlight guards', async () => {
+  const fs = await import('node:fs');
+  const controllerSrc = fs.readFileSync(new URL('../../src/ui/ControllerApp.js', import.meta.url), 'utf8');
+  const touchControlsSrc = fs.readFileSync(new URL('../../src/ui/TouchControls.js', import.meta.url), 'utf8');
+  const menuSrc = fs.readFileSync(new URL('../../src/ui/Menu.js', import.meta.url), 'utf8');
+  const cssSrc = fs.readFileSync(new URL('../../src/ui/ui.css', import.meta.url), 'utf8');
+
+  // 1. Tactile D-Pad Cross replaces the old overflowing circular steering wheel
+  assert.ok(controllerSrc.includes('class="zc-dpad-cross"'), 'ControllerApp must render tactile D-pad cross (.zc-dpad-cross)');
+  assert.ok(controllerSrc.includes('id="zc-steer-left"') && controllerSrc.includes('id="zc-steer-right"'), 'ControllerApp must render left/right D-pad wings');
+  assert.ok(!controllerSrc.includes('id="zc-wheel"'), 'ControllerApp must not render the old overflowing circular wheel alongside the D-pad');
+
+  // 2. Locked Landscape Mode (Screen Orientation API lock + automatic 90deg CSS rotation when iPhone is in Portrait)
+  assert.ok(controllerSrc.includes("screen.orientation?.lock?.('landscape')"), 'ControllerApp must request screen.orientation.lock("landscape")');
+  assert.ok(controllerSrc.includes('is-portrait-locked-landscape'), 'ControllerApp must rotate 90deg into landscape when iPhone is held in portrait');
+  assert.ok(cssSrc.includes('.zario-controller-shell.is-portrait-locked-landscape'), 'ui.css must style .is-portrait-locked-landscape with 90deg rotation');
+
+  // 3. Anti-double-tap zoom, anti-highlight, and iOS 16px input guard across ControllerApp & TouchControls
+  assert.ok(controllerSrc.includes("addEventListener('dblclick'"), 'ControllerApp must block dblclick zoom');
+  assert.ok(controllerSrc.includes("addEventListener('gesturestart'"), 'ControllerApp must block iOS Safari pinch/double-tap gesturestart');
+  assert.ok(controllerSrc.includes("addEventListener('selectstart'"), 'ControllerApp must block text selection highlight');
+  assert.ok(touchControlsSrc.includes("addEventListener('dblclick'") && touchControlsSrc.includes("addEventListener('gesturestart'"), 'TouchControls must also block dblclick and gesturestart');
+  assert.ok(cssSrc.includes('font-size: 16px !important'), 'Room input must use >=16px font-size to prevent iOS Safari auto-zoom on focus');
+
+  // 4. Main Menu compact 3-column utility row below .sk3d-current-pick (zero vertical overflow on iPhone landscape)
+  assert.ok(menuSrc.includes("subRow.prepend(toggle)") && menuSrc.includes("picked?.after(subRow)"), 'Menu.js must combine Settings, TV+iPhone, and Logs into a single horizontal row below .sk3d-current-pick');
+  assert.ok(cssSrc.includes('grid-template-columns: repeat(3, minmax(0, 1fr)) !important'), 'ui.css must lay out the 3 utility buttons in one compact row');
+
+  // 5. Runtime Mount Verification of mountControllerApp in Portrait (390x844) -> Landscape (844x390)
+  const { mountControllerApp } = await import('../../src/ui/ControllerApp.js');
+  const winListeners = {};
+  window.addEventListener = (type, fn) => {
+    (winListeners[type] = winListeners[type] || []).push(fn);
+  };
+  document.documentElement = { classList: { add() {}, remove() {}, toggle() {} } };
+  document.getElementById = () => null;
+  document.querySelector = () => null;
+
+  const origCreateElement = document.createElement.bind(document);
+  document.createElement = (tag) => {
+    const el = origCreateElement(tag);
+    const classes = new Set();
+    const listeners = {};
+    el.classList = {
+      add: (...c) => c.forEach((x) => classes.add(x)),
+      remove: (...c) => c.forEach((x) => classes.delete(x)),
+      toggle: (c, force) => (force === undefined ? (classes.has(c) ? classes.delete(c) : classes.add(c)) : (force ? classes.add(c) : classes.delete(c))),
+      contains: (c) => classes.has(c),
+    };
+    el.addEventListener = (type, fn) => {
+      (listeners[type] = listeners[type] || []).push(fn);
+    };
+    el.dispatchEvent = (ev) => {
+      for (const fn of listeners[ev.type] || []) fn(ev);
+    };
+    return el;
+  };
+
+  let mountedUi = null;
+  const rootContainer = {
+    appendChild(child) {
+      mountedUi = child;
+    },
+  };
+
+  // Mount while iPhone is in Portrait (390x844, e.g., iOS Portrait Orientation Lock enabled)
+  window.innerWidth = 390;
+  window.innerHeight = 844;
+  const ctrl = mountControllerApp(rootContainer);
+  assert.ok(mountedUi, 'mountControllerApp should append #zario-iphone-controller to container');
+  assert.equal(mountedUi.classList.contains('is-portrait-locked-landscape'), true, 'In Portrait (390x844), controller must auto-lock into rotated Landscape mode');
+  assert.equal(mountedUi.style.width, '844px', 'Rotated landscape width must equal portrait height (844px)');
+  assert.equal(mountedUi.style.height, '390px', 'Rotated landscape height must equal portrait width (390px)');
+  assert.ok(mountedUi.style.transform.includes('rotate(90deg)'), 'Must apply rotate(90deg) in portrait');
+
+  // Rotate iPhone to native Landscape (844x390)
+  window.innerWidth = 844;
+  window.innerHeight = 390;
+  for (const fn of winListeners.resize || []) fn();
+  assert.equal(mountedUi.classList.contains('is-portrait-locked-landscape'), false, 'In native Landscape (844x390), 90deg rotation class must be removed');
+  assert.equal(mountedUi.style.width, '844px');
+  assert.equal(mountedUi.style.height, '390px');
+  assert.equal(mountedUi.style.transform, 'none');
+
+  // Verify double-tap (dblclick), selectstart, gesturestart, and rapid touchend call preventDefault()
+  for (const evType of ['dblclick', 'selectstart', 'contextmenu', 'gesturestart']) {
+    let prevented = false;
+    mountedUi.dispatchEvent({
+      type: evType,
+      target: { id: 'zc-steer-left' },
+      preventDefault() { prevented = true; },
+    });
+    assert.equal(prevented, true, `${evType} on controller button must call preventDefault()`);
+  }
+
+  // Rapid double-touchend (<350ms) must call preventDefault() on the second tap
+  let firstPrevented = false;
+  let secondPrevented = false;
+  mountedUi.dispatchEvent({
+    type: 'touchend',
+    target: { id: 'zc-btn-accel' },
+    preventDefault() { firstPrevented = true; },
+  });
+  mountedUi.dispatchEvent({
+    type: 'touchend',
+    target: { id: 'zc-btn-accel' },
+    preventDefault() { secondPrevented = true; },
+  });
+  assert.equal(firstPrevented, false);
+  assert.equal(secondPrevented, true, 'Rapid double-tap touchend (<350ms) must call preventDefault() to block iOS zoom');
+
+  // Clean up controller and bridge timers so Node exits immediately
+  ctrl.destroy();
+});
+

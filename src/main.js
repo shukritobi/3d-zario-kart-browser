@@ -1288,8 +1288,8 @@ function updateCamera(dt, t) {
     // so QA frames show karts, road and environment up close.
     if (playerKart) {
       const st = playerKart.state;
-      const group = playerKart.group;
-      _fwd.set(0, 0, 1).applyQuaternion(group.quaternion);
+      const yaw = st.heading || 0;
+      _fwd.set(Math.sin(yaw), 0, Math.cos(yaw));
       _side.set(_fwd.z, 0, -_fwd.x);
       // DEMO must remain a player-facing chase camera. The previous cinematic
       // offsets (3.6–4.2m back and 3.4m lateral sway) made the kart leave the
@@ -1298,14 +1298,16 @@ function updateCamera(dt, t) {
       // by normal gameplay so video QA exercises a truthful player view.
       const sway = Math.sin(t * 0.13) * 0.55;
       const demoBackDistance = CONFIG.camera.followDistance + (TRACK_ID === 2 ? (CONFIG.camera.neonFollowExtra || 0) : 0);
-      _camDesired.copy(st.position)
+      const roadY = typeof st.groundY === 'number' ? st.groundY : st.position.y;
+      const airLift = Math.max(0, st.position.y - roadY);
+      _camDesired.set(st.position.x, roadY + airLift * 0.25, st.position.z)
         .addScaledVector(_fwd, -demoBackDistance)
         .addScaledVector(_side, sway);
       _camDesired.y += CONFIG.camera.followHeight + 0.2 + Math.sin(t * 0.4) * 0.15;
       const lerp = 1 - Math.exp(-2.4 * dt);
       camPos.lerp(_camDesired, lerp);
       camera.position.copy(camPos);
-      _camLook.copy(st.position).addScaledVector(_fwd, 6);
+      _camLook.set(st.position.x, roadY + airLift * 0.42, st.position.z).addScaledVector(_fwd, 6);
       _camLook.y += 1.0;
       lookTarget.lerp(_camLook, Math.min(1, dt * 5));
       camera.lookAt(lookTarget);
@@ -1316,9 +1318,13 @@ function updateCamera(dt, t) {
   const k = playerKart;
   if (!k) return;
   const st = k.state;
-  const group = k.group;
 
-  _fwd.set(0, 0, 1).applyQuaternion(group.quaternion);
+  // ANTI-DIZZINESS FIX: Never derive camera forward vector from `group.quaternion`,
+  // because `group` pitches on ramps, banks into turns, and flips 360° during
+  // mid-air tricks! Always anchor chase camera on horizontal yaw (`st.heading`)
+  // and stabilize vertical height against the road (`st.groundY`).
+  const yaw = st.heading || 0;
+  _fwd.set(Math.sin(yaw), 0, Math.cos(yaw));
   _side.set(_fwd.z, 0, -_fwd.x);
 
   const speed01 = Math.min(1, Math.abs(st.speed) / CONFIG.physics.maxSpeed);
@@ -1340,10 +1346,15 @@ function updateCamera(dt, t) {
     (1 + speed01 * CAM_SPEED_PULLBACK) +
     camBoostKick * CAM_BOOST_KICK;
 
-  camTarget.copy(st.position).addScaledVector(_fwd, CONFIG.camera.lookAhead);
+  const roadY = typeof st.groundY === 'number' ? st.groundY : st.position.y;
+  const airLift = Math.max(0, st.position.y - roadY);
+  const camAnchorY = roadY + airLift * 0.25;
+  const lookAnchorY = roadY + airLift * 0.42;
+
+  camTarget.set(st.position.x, lookAnchorY, st.position.z).addScaledVector(_fwd, CONFIG.camera.lookAhead);
   camTarget.y += CONFIG.camera.lookHeight;
 
-  _camDesired.copy(st.position)
+  _camDesired.set(st.position.x, camAnchorY, st.position.z)
     .addScaledVector(_fwd, -dist)
     .addScaledVector(_side, camSwing);
   _camDesired.y += CONFIG.camera.followHeight + camBoostKick * 0.4;

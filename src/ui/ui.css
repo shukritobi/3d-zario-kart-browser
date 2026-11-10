@@ -2567,16 +2567,45 @@ html, body {
 }
 
 /* =========================================================================
-   2026 UPGRADE: Menu Sub-Row (TV + iPhone Switch Mode & Telemetry Logs)
+   2026 UPGRADE: Menu Sub-Row (Settings, TV + iPhone Switch Mode & Logs)
    ========================================================================= */
+.sk3d-menu-card > .sk3d-menu-actions.sk3d-menu-actions-sub {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+  width: 100% !important;
+  max-width: 470px !important;
+  margin: 0 !important;
+  flex: none !important;
+}
+
+.sk3d-menu-card .sk3d-menu-actions-sub > .sk3d-btn {
+  min-height: 36px !important;
+  padding: 5px 8px !important;
+  font-size: clamp(11px, 2.1vh, 13px) !important;
+  line-height: 1.15 !important;
+  border-radius: 40px !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+@media (max-height: 470px) and (orientation: landscape) {
+  .sk3d-menu-card .sk3d-menu-actions-sub > .sk3d-btn {
+    min-height: 30px !important;
+    padding: 4px 6px !important;
+    font-size: 11px !important;
+  }
+}
+
 .sk3d-switch-btn {
-  background: linear-gradient(135deg, #00c2ff 0%, #ff3b5c 100%);
-  color: #ffffff;
+  background: linear-gradient(135deg, #00c2ff 0%, #ff3b5c 100%) !important;
+  color: #ffffff !important;
 }
 
 .sk3d-logs-btn {
-  background: #2b3a55;
-  color: #f8fafc;
+  background: #2b3a55 !important;
+  color: #f8fafc !important;
 }
 
 /* =========================================================================
@@ -2797,68 +2826,124 @@ body.zario-tv-mode .sk3d-track-card:focus {
 }
 
 /* =========================================================================
-   iPhone Wireless Joy-Con / Mario Kart Wheel Controller UI (?controller=1)
+   iPhone Wireless Joy-Con / D-Pad Controller UI (?controller=1)
+   - Locked in Landscape Mode (native landscape OR 90° auto-rotated portrait)
+   - Zero horizontal/vertical overflow on all iPhone screen sizes (SE to Pro Max)
+   - Zero double-tap zoom, text selection highlight, or callout menu
    ========================================================================= */
+html.zc-controller-html-lock,
+body.zc-controller-body-lock {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+  touch-action: none !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -webkit-touch-callout: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+  background: #090d16 !important;
+}
+
+.zario-controller-shell,
+.zario-controller-shell *,
+.zario-controller-shell *::before,
+.zario-controller-shell *::after {
+  box-sizing: border-box !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -webkit-touch-callout: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-user-drag: none !important;
+  touch-action: none !important;
+}
+
+.zario-controller-shell input#zc-room-input {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  touch-action: manipulation !important;
+}
+
 .zario-controller-shell {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
   z-index: 99995;
   display: grid;
-  grid-template-columns: 1.05fr 1.1fr 1.05fr;
-  gap: 12px;
-  padding: calc(10px + env(safe-area-inset-top, 0px))
-           calc(14px + env(safe-area-inset-right, 0px))
-           calc(10px + env(safe-area-inset-bottom, 0px))
-           calc(14px + env(safe-area-inset-left, 0px));
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr) minmax(0, 1.08fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: clamp(6px, 1.4vw, 12px);
+  padding: clamp(6px, 1.8vh, 10px) clamp(8px, 2vw, 14px);
   background: radial-gradient(circle at 50% 20%, #1e293b 0%, #090d16 100%);
   color: #f8fafc;
-  font-family: var(--sk3d-font, system-ui, sans-serif);
-  user-select: none;
-  -webkit-user-select: none;
-  touch-action: none;
+  font-family: var(--sk3d-font, system-ui, -apple-system, sans-serif);
+  overflow: hidden !important;
+}
+
+.zario-controller-shell.is-portrait-locked-landscape {
+  transform-origin: center center;
 }
 
 .zario-controller-shell.zc-haptic-flash {
-  box-shadow: inset 0 0 0 4px #38bdf8;
+  box-shadow: inset 0 0 0 3px #38bdf8;
 }
 
 .zc-joycon-left,
 .zc-joycon-right,
 .zc-center-console {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  border-radius: 26px;
-  padding: 12px;
+  gap: clamp(4px, 1.2vh, 8px);
+  border-radius: clamp(16px, 3vw, 24px);
+  padding: clamp(6px, 1.8vh, 10px);
+  overflow: hidden;
 }
 
 .zc-joycon-left {
   background: linear-gradient(165deg, #00b4d8 0%, #0077b6 100%);
-  border: 3px solid #90e0ef;
-  box-shadow: inset 0 4px 12px rgba(255, 255, 255, 0.25);
+  border: 2.5px solid #90e0ef;
+  box-shadow: inset 0 3px 10px rgba(255, 255, 255, 0.22);
 }
 
 .zc-joycon-right {
   background: linear-gradient(165deg, #ff4d6d 0%, #c9184a 100%);
-  border: 3px solid #ffccd5;
-  box-shadow: inset 0 4px 12px rgba(255, 255, 255, 0.25);
+  border: 2.5px solid #ffccd5;
+  box-shadow: inset 0 3px 10px rgba(255, 255, 255, 0.22);
 }
 
 .zc-center-console {
-  background: rgba(15, 23, 42, 0.92);
+  background: rgba(15, 23, 42, 0.94);
   border: 2px solid rgba(148, 163, 184, 0.28);
+}
+
+.zc-shoulder-bar {
+  flex: 0 0 auto;
 }
 
 .zc-shoulder-btn {
   width: 100%;
-  min-height: 46px;
-  border-radius: 16px;
+  height: clamp(32px, 9.5vh, 42px);
+  border-radius: 12px;
   border: 2px solid #ffffff;
   background: #0f172a;
   color: #ffffff;
   font-weight: 900;
-  font-size: 0.95rem;
-  letter-spacing: 0.06em;
+  font-size: clamp(0.72rem, 2.2vh, 0.9rem);
+  letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
 }
 
 .zc-shoulder-btn.is-pressed {
@@ -2867,90 +2952,159 @@ body.zario-tv-mode .sk3d-track-card:focus {
   transform: scale(0.97);
 }
 
-.zc-wheel-zone {
-  flex: 1;
+/* Tactile Landscape D-Pad Zone */
+.zc-dpad-zone {
+  flex: 1 1 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: clamp(3px, 1vh, 6px);
   position: relative;
 }
 
-.zc-wheel-ring {
-  width: clamp(92px, 24vh, 136px);
-  height: clamp(92px, 24vh, 136px);
-  border-radius: 50%;
-  border: 12px solid #0f172a;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45), inset 0 0 0 3px #38bdf8;
+.zc-dpad-cross {
+  width: 100%;
+  flex: 1 1 0;
+  min-height: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  position: relative;
-  transition: transform 0.04s linear;
+  gap: 2px;
 }
 
-.zc-wheel-top-mark {
-  position: absolute;
-  top: -12px;
-  width: 16px;
-  height: 12px;
-  background: #ffd166;
-  border-radius: 4px;
-}
-
-.zc-wheel-hub {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  background: #e11d48;
-  color: #ffffff;
-  font-size: 0.65rem;
+.zc-dpad-up,
+.zc-dpad-down {
+  width: clamp(36px, 11vh, 48px);
+  height: clamp(18px, 5.2vh, 26px);
+  background: #1e293b;
+  border: 2px solid rgba(255, 255, 255, 0.55);
+  color: rgba(255, 255, 255, 0.65);
+  font-size: clamp(0.6rem, 1.8vh, 0.75rem);
   font-weight: 900;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px solid #ffffff;
+  pointer-events: none;
 }
 
-.zc-steer-buttons {
-  display: flex;
-  gap: 14px;
+.zc-dpad-up {
+  border-radius: 8px 8px 3px 3px;
+}
+
+.zc-dpad-down {
+  border-radius: 3px 3px 8px 8px;
+}
+
+.zc-dpad-middle-row {
   width: 100%;
+  flex: 1 1 0;
+  min-height: 0;
+  max-height: clamp(56px, 22vh, 92px);
+  display: flex;
+  align-items: stretch;
   justify-content: center;
+  gap: 3px;
 }
 
 .zc-dpad-btn {
-  flex: 1;
-  min-height: 48px;
-  border-radius: 14px;
-  border: 2px solid rgba(255, 255, 255, 0.75);
-  background: rgba(15, 23, 42, 0.45);
+  flex: 1 1 0;
+  min-width: 0;
+  border: 2.5px solid #ffffff;
+  background: #0f172a;
   color: #ffffff;
-  font-size: 1.35rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.4);
+  padding: 2px;
+}
+
+.zc-dpad-left {
+  border-radius: 14px 4px 4px 14px;
+}
+
+.zc-dpad-right {
+  border-radius: 4px 14px 14px 4px;
+}
+
+.zc-dpad-arrow {
+  font-size: clamp(1.2rem, 4.5vh, 1.7rem);
+  line-height: 1;
   font-weight: 900;
 }
 
+.zc-dpad-label {
+  font-size: clamp(0.55rem, 1.7vh, 0.7rem);
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  opacity: 0.9;
+}
+
 .zc-dpad-btn.is-pressed {
-  background: #ffffff;
+  background: #ffd166;
   color: #0f172a;
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
+}
+
+.zc-dpad-center-pivot {
+  width: clamp(28px, 8vh, 40px);
+  background: #1e293b;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.zc-dpad-pivot-ring {
+  width: clamp(12px, 3.6vh, 18px);
+  height: clamp(12px, 3.6vh, 18px);
+  border-radius: 50%;
+  background: #38bdf8;
+  border: 2px solid #ffffff;
+  transition: transform 0.04s linear;
 }
 
 .zc-steer-readout {
-  font-size: 0.78rem;
+  font-size: clamp(0.62rem, 1.8vh, 0.74rem);
   font-weight: 800;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.zc-left-utility-row {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 4px;
+  width: 100%;
 }
 
 .zc-pill-btn {
-  width: 100%;
-  min-height: 36px;
+  flex: 1 1 0;
+  min-width: 0;
+  height: clamp(26px, 7.5vh, 34px);
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  background: rgba(15, 23, 42, 0.65);
+  border: 1.5px solid rgba(255, 255, 255, 0.65);
+  background: rgba(15, 23, 42, 0.72);
   color: #ffffff;
   font-weight: 800;
-  font-size: 0.78rem;
+  font-size: clamp(0.64rem, 1.9vh, 0.75rem);
+  padding: 0 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.zc-pill-btn[hidden] {
+  display: none !important;
 }
 
 .zc-pill-btn.is-active {
@@ -2960,54 +3114,67 @@ body.zario-tv-mode .sk3d-track-card:focus {
 }
 
 .zc-top-bar {
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: clamp(3px, 1vh, 5px);
 }
 
 .zc-room-group {
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: space-between;
+  gap: 4px;
+  width: 100%;
 }
 
 .zc-room-group label {
-  font-size: 0.72rem;
+  font-size: clamp(0.6rem, 1.8vh, 0.7rem);
   font-weight: 800;
   color: #94a3b8;
+  flex: 0 0 auto;
 }
 
+/* 16px font-size prevents iOS Safari from auto-zooming on input focus! */
 .zc-room-group input {
-  width: 78px;
-  padding: 5px 8px;
-  border-radius: 8px;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 84px;
+  height: clamp(28px, 7.5vh, 34px);
+  padding: 2px 4px;
+  border-radius: 7px;
   border: 2px solid #38bdf8;
   background: #090d16;
   color: #ffd166;
   font-weight: 900;
-  font-size: 0.95rem;
+  font-size: 16px !important;
   text-align: center;
   text-transform: uppercase;
 }
 
 .zc-room-group button {
-  padding: 6px 10px;
-  border-radius: 8px;
+  flex: 0 0 auto;
+  height: clamp(28px, 7.5vh, 34px);
+  padding: 0 8px;
+  border-radius: 7px;
   border: none;
   background: #38bdf8;
   color: #0f172a;
   font-weight: 900;
-  font-size: 0.78rem;
+  font-size: clamp(0.66rem, 1.9vh, 0.76rem);
 }
 
 .zc-conn-pill {
-  font-size: 0.75rem;
+  font-size: clamp(0.62rem, 1.8vh, 0.72rem);
   font-weight: 800;
-  padding: 4px 10px;
+  padding: 2px 6px;
   border-radius: 999px;
   background: rgba(250, 204, 21, 0.16);
   color: #fde047;
   text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .zc-conn-pill.is-online {
@@ -3016,58 +3183,84 @@ body.zario-tv-mode .sk3d-track-card:focus {
 }
 
 .zc-telemetry-card {
+  flex: 1 1 0;
+  min-height: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 6px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 18px;
-  padding: 10px 14px;
+  border-radius: 14px;
+  padding: clamp(4px, 1.4vh, 8px) clamp(6px, 1.5vw, 10px);
 }
 
 .zc-tele-rank {
-  font-size: 1.9rem;
+  font-size: clamp(1.2rem, 4.4vh, 1.7rem);
   font-weight: 900;
   color: #ffd166;
+  line-height: 1;
+}
+
+.zc-tele-mid {
+  min-width: 0;
+  text-align: center;
 }
 
 .zc-tele-speed {
-  font-size: 1.4rem;
+  font-size: clamp(0.95rem, 3.4vh, 1.25rem);
   font-weight: 900;
+  line-height: 1.05;
 }
 
 .zc-tele-lap {
-  font-size: 0.75rem;
+  font-size: clamp(0.58rem, 1.7vh, 0.7rem);
   color: #cbd5e1;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .zc-tele-item {
-  width: 52px;
-  height: 52px;
-  border-radius: 14px;
+  flex: 0 0 auto;
+  width: clamp(36px, 10.5vh, 46px);
+  height: clamp(36px, 10.5vh, 46px);
+  border-radius: 11px;
   background: rgba(15, 23, 42, 0.85);
   border: 2px solid #ffd166;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.75rem;
+  font-size: clamp(1.15rem, 3.8vh, 1.5rem);
+  padding: 0;
+  color: #fff;
 }
 
 .zc-center-actions {
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: clamp(3px, 1vh, 5px);
+}
+
+.zc-center-subrow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
 }
 
 .zc-action-chip {
-  min-height: 34px;
-  border-radius: 10px;
+  width: 100%;
+  height: clamp(26px, 7.5vh, 32px);
+  border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.22);
   background: #1e293b;
   color: #f8fafc;
   font-weight: 800;
-  font-size: 0.76rem;
+  font-size: clamp(0.62rem, 1.8vh, 0.72rem);
+  padding: 0 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .zc-action-chip.is-active {
@@ -3077,62 +3270,64 @@ body.zario-tv-mode .sk3d-track-card:focus {
 }
 
 .zc-abxy-cluster {
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  justify-content: center;
+  gap: clamp(5px, 1.5vh, 8px);
+  justify-content: stretch;
 }
 
 .zc-pedal-btn {
-  border-radius: 20px;
-  border: 3px solid #ffffff;
+  min-height: 0;
+  border-radius: clamp(12px, 2.5vw, 18px);
+  border: 2.5px solid #ffffff;
   color: #ffffff;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   font-weight: 900;
-  box-shadow: 0 6px 0 rgba(0, 0, 0, 0.35);
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.35);
+  padding: 2px;
 }
 
 .zc-pedal-btn.is-pressed {
-  transform: translateY(3px);
-  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
   filter: brightness(1.15);
 }
 
 .zc-btn-a {
-  flex: 1.25;
+  flex: 1.15 1 0;
   background: linear-gradient(180deg, #22c55e 0%, #15803d 100%);
-  min-height: 76px;
 }
 
 .zc-secondary-pedals {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  flex: 1;
+  gap: clamp(5px, 1.5vw, 8px);
+  flex: 1 1 0;
+  min-height: 0;
 }
 
 .zc-btn-b {
   background: linear-gradient(180deg, #f59e0b 0%, #b45309 100%);
-  min-height: 58px;
 }
 
 .zc-btn-x {
   background: linear-gradient(180deg, #6366f1 0%, #4338ca 100%);
-  min-height: 58px;
 }
 
 .zc-btn-letter {
-  font-size: 1.45rem;
+  font-size: clamp(1.05rem, 3.8vh, 1.35rem);
   line-height: 1;
 }
 
 .zc-btn-sub {
-  font-size: 0.68rem;
-  letter-spacing: 0.06em;
+  font-size: clamp(0.55rem, 1.6vh, 0.65rem);
+  letter-spacing: 0.04em;
   opacity: 0.92;
 }
+
 

@@ -86,6 +86,22 @@ export class TouchControls {
     this.bindSteer(this.rightBtn, 1);
     this.bindItem(this.itemBtn);
 
+    // Block iOS Safari double-tap zoom, text selection highlight, and gesture zoom on all touch controls
+    const blockTouchDefault = (e) => {
+      if (e.cancelable) e.preventDefault();
+    };
+    for (const btn of [this.leftBtn, this.rightBtn, this.driftBtn, this.itemBtn, this.pauseBtn]) {
+      if (!btn) continue;
+      btn.addEventListener('touchstart', blockTouchDefault, { passive: false });
+      btn.addEventListener('touchend', blockTouchDefault, { passive: false });
+      btn.addEventListener('dblclick', blockTouchDefault, { passive: false });
+      btn.addEventListener('selectstart', blockTouchDefault, { passive: false });
+      btn.addEventListener('contextmenu', blockTouchDefault, { passive: false });
+    }
+    this.root.addEventListener('dblclick', blockTouchDefault, { passive: false });
+    this.root.addEventListener('selectstart', blockTouchDefault, { passive: false });
+    this.root.addEventListener('gesturestart', blockTouchDefault, { passive: false });
+
     document.body.appendChild(this.root);
   }
 

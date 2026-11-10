@@ -37,6 +37,15 @@
       href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&display=swap"
       rel="stylesheet"
     />
+    <style>
+      html, body {
+        -webkit-tap-highlight-color: transparent;
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+        overscroll-behavior: none;
+      }
+    </style>
   </head>
   <body>
     <div id="app"></div>
@@ -69,7 +78,7 @@
         });
         var started = Date.now();
         var interval = setInterval(function () {
-          if (window.__zarioControlStatus && document.querySelector('#app canvas')) {
+          if ((window.__zarioControlStatus && document.querySelector('#app canvas')) || document.getElementById('zario-iphone-controller')) {
             ready = true;
             document.getElementById('zario-boot-guard')?.remove();
             clearInterval(interval);

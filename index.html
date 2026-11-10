@@ -37,10 +37,19 @@
       href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="./assets/index-CpX_TEo2.js"></script>
+    <style>
+      html, body {
+        -webkit-tap-highlight-color: transparent;
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+        overscroll-behavior: none;
+      }
+    </style>
+    <script type="module" crossorigin src="./assets/index-9BAKsCK3.js"></script>
     <link rel="modulepreload" crossorigin href="./assets/three-core-DGjCmdGM.js">
     <link rel="modulepreload" crossorigin href="./assets/three-examples-Vj_AEiR9.js">
-    <link rel="stylesheet" crossorigin href="./assets/index-BoO7BjS_.css">
+    <link rel="stylesheet" crossorigin href="./assets/index-U6NkndKA.css">
   </head>
   <body>
     <div id="app"></div>
@@ -73,7 +82,7 @@
         });
         var started = Date.now();
         var interval = setInterval(function () {
-          if (window.__zarioControlStatus && document.querySelector('#app canvas')) {
+          if ((window.__zarioControlStatus && document.querySelector('#app canvas')) || document.getElementById('zario-iphone-controller')) {
             ready = true;
             document.getElementById('zario-boot-guard')?.remove();
             clearInterval(interval);
