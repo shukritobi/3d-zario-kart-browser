@@ -468,4 +468,57 @@ test('Playability Upgrades: 3-Tier Mini-Turbo Drift (Blue -> Orange Super -> Pur
   assert.ok(chaser._boostMs >= 700, `Slipstream Slingshot must apply >=700ms boost on the chaser kart (got ${chaser._boostMs}ms)`);
 });
 
+test('Mario Kart Hop-Into-Drift & Tire Smoke Animation: pressing Drift button jumps ~0.42m, angles kart into crab-slide yaw, and bursts dual-tire smoke & sparks', async () => {
+  const fs = await import('node:fs');
+  const sfxSrc = fs.readFileSync(new URL('../../src/audio/sfx.js', import.meta.url), 'utf8');
+  assert.ok(sfxSrc.includes("case 'driftHop':"), 'src/audio/sfx.js must include the driftHop sound recipe');
+
+  const scene = new THREE.Scene();
+  const track = buildTrack(scene, TRACK_PATH, 1);
+  const startPt = track.path.getPointAt(0.05);
+  const startTan = track.path.getTangentAt(0.05).setY(0).normalize();
+  const startH = Math.atan2(startTan.x, startTan.z);
+
+  const kart = new Kart({
+    character: CONFIG.kart.characters[0],
+    isPlayer: true,
+    startPosition: startPt.clone(),
+    startHeading: startH,
+  });
+  kart.state.speed = 30;
+
+  let hopStarted = false;
+  let hopLanded = false;
+  let maxHopHeightLift = 0;
+  let maxCrabSlipYaw = 0;
+  const emittedTypes = new Set();
+
+  kart._onDriftHop = () => { hopStarted = true; };
+  kart._onDriftHopLand = () => { hopLanded = true; };
+
+  const mockParticles = {
+    emit(type) {
+      emittedTypes.add(type);
+    },
+  };
+
+  // Run 22 frames (~0.36s) while holding Drift + steering right (+0.85)
+  for (let i = 0; i < 22; i++) {
+    kart.setControls({ steer: 0.85, throttle: 1, brake: false, drift: true });
+    kart.update(1 / 60, { track, particles: mockParticles });
+    const hopLift = kart.group.position.y - kart.state.position.y;
+    if (hopLift > maxHopHeightLift) maxHopHeightLift = hopLift;
+    const slipYaw = Math.abs(kart.group.rotation.y - kart.state.heading);
+    if (slipYaw > maxCrabSlipYaw) maxCrabSlipYaw = slipYaw;
+  }
+
+  assert.equal(hopStarted, true, 'Pressing Drift button must trigger _onDriftHop immediately');
+  assert.ok(maxHopHeightLift >= 0.35, `Kart should jump ~0.42m into the air during the Drift Hop (got ${maxHopHeightLift.toFixed(2)}m)`);
+  assert.ok(maxCrabSlipYaw >= 0.20, `Kart body should angle into a Mario Kart crab-slide yaw while drifting (got ${maxCrabSlipYaw.toFixed(2)} rad)`);
+  assert.equal(hopLanded, true, 'Kart should complete the 240ms Drift Hop and trigger _onDriftHopLand');
+  assert.ok(emittedTypes.has('drift'), 'Drifting and landing the hop must emit billowing tire smoke ("drift" particles)');
+  assert.ok(emittedTypes.has('sparkle'), 'Landing the drift hop must emit tire-bite sparks ("sparkle" particles)');
+});
+
+
 

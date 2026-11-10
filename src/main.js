@@ -608,6 +608,51 @@ function wireMiniBoost(kart) {
       });
     }
   };
+  kart._onDriftHop = () => {
+    const v = kart.isPlayer ? 0.68 : 0.25;
+    audio.play('driftHop', {
+      volume: v,
+      pan: playerKart ? (kart.group.position.x - playerKart.group.position.x) * 0.02 : 0,
+    });
+    if (kart.isPlayer) {
+      touch?.pulse?.('drift');
+    }
+    if (particles) {
+      _fxPos.set(kart.state.position.x, kart.state.position.y + 0.16, kart.state.position.z);
+      particles.emit('drift', _fxPos, {
+        count: 10,
+        speed: 2.6,
+        size: 0.36,
+        spread: 1.1,
+        color: 0xf1f5f9,
+      });
+    }
+  };
+  kart._onDriftHopLand = (_driftDir = 0, isDrifting = false) => {
+    if (kart.isPlayer) {
+      addShake(0.08, 0.12);
+      if (isDrifting) {
+        audio.play('drift', { volume: 0.48, rate: 1.12 });
+      }
+    }
+    if (particles) {
+      _fxPos.set(kart.state.position.x, kart.state.position.y + 0.15, kart.state.position.z);
+      particles.emit('drift', _fxPos, {
+        count: 16,
+        speed: 3.4,
+        size: 0.45,
+        spread: 1.35,
+        color: 0xf8fafc,
+      });
+      particles.emit('sparkle', _fxPos, {
+        count: 8,
+        speed: 4.2,
+        size: 0.2,
+        spread: 1.2,
+        color: isDrifting ? 0x38bdf8 : 0xffd166,
+      });
+    }
+  };
   kart._onDriftTier = (tier = 1) => {
     // Drift charge tier cue (audit r2/r9): beep + spark burst at 0.33/0.66/0.9
     // (tier 1 = blue tick, tier 2 = orange blip, tier 3 = purple flash —

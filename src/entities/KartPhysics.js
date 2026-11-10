@@ -163,14 +163,52 @@ function updateDrift(kart, input, dt, speedAbs) {
   const s = kart.state;
   const P = CONFIG.physics;
   const can = speedAbs >= P.driftMinSpeed && !s.spinOut;
+
+  // Mario Kart Hop-Into-Drift (Power-Slide Hop):
+  // Pressing the Drift button triggers a crisp 240ms vertical hop with
+  // springy suspension stretch -> mid-air slip-angle turn -> landing squash & tire smoke burst!
+  const driftPressedEdge = !!input.drift && !kart._driftBtnWasDown;
+  kart._driftBtnWasDown = !!input.drift;
+
+  if (driftPressedEdge && !s.spinOut && (kart._airTime || 0) <= 0.04) {
+    kart._driftHopT = 0.001;
+    kart._driftHopLanded = false;
+    s.driftHopping = true;
+    s.driftDir = Math.abs(input.steer) > 0.06 ? Math.sign(input.steer) : 0;
+    kart._scaleTarget = 1.13; // springy upward stretch on hop launch
+    kart._scaleMs = Math.max(kart._scaleMs || 0, 140);
+    kart._onDriftHop?.(s.driftDir);
+  }
+
+  if (kart._driftHopT && kart._driftHopT > 0) {
+    kart._driftHopT += dt / 0.24;
+    if (!s.driftDir && Math.abs(input.steer) > 0.06) {
+      s.driftDir = Math.sign(input.steer);
+    }
+    if (kart._driftHopT >= 1) {
+      kart._driftHopT = 0;
+      s.driftHopping = false;
+      kart._driftHopLanded = true;
+      kart._driftHopLandBurst = true;
+      kart._scaleTarget = 0.88; // landing suspension compression squash
+      kart._scaleMs = Math.max(kart._scaleMs || 0, 220);
+      kart._onDriftHopLand?.(s.driftDir || 0, !!(input.drift && can));
+    }
+  } else {
+    s.driftHopping = false;
+  }
+
   if (input.drift && can) {
     if (!s.drifting) {
       s.drifting = true;
       s.driftCharge = 0;
+      s.driftDir = Math.abs(input.steer) > 0.06 ? Math.sign(input.steer) : (s.driftDir || 0);
       kart._driftFullT = 0;
       kart._driftTier1 = false;
       kart._driftTier2 = false;
       kart._driftTier3 = false; // AUDIT r9: MK8D's third (purple) spark tier
+    } else if (!s.driftDir && Math.abs(input.steer) > 0.06) {
+      s.driftDir = Math.sign(input.steer);
     }
     s.driftCharge = Math.min(1, s.driftCharge + P.driftChargeRate * dt * (1 + Math.abs(input.steer) * 0.6));
     // Charge tiers (audit r2/r9): one-shot spark + beep cue at 0.33 / 0.66 /
@@ -200,6 +238,7 @@ function updateDrift(kart, input, dt, speedAbs) {
         s.drifting = false;
         s.driftCharge = 0;
         s.driftTier = 0;
+        s.driftDir = 0;
         kart._driftFullT = 0;
         kart._driftTier1 = false;
         kart._driftTier2 = false;
@@ -220,10 +259,13 @@ function updateDrift(kart, input, dt, speedAbs) {
     s.drifting = false;
     s.driftCharge = 0;
     s.driftTier = 0;
+    s.driftDir = 0;
     kart._driftFullT = 0;
     kart._driftTier1 = false;
     kart._driftTier2 = false;
     kart._driftTier3 = false;
+  } else if (!input.drift) {
+    s.driftDir = 0;
   }
 }
 

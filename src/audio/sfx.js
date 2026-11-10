@@ -382,6 +382,26 @@ export function renderSfx(ctx, out, name, opts = {}) {
       break;
     }
 
+    case 'driftHop': {
+      // Classic Mario Kart Power-Slide Hop ("boing-chirp!"):
+      // 1) Springy suspension hop pitch glide (210Hz -> 520Hz) on button press
+      osc(ctx, target, {
+        type: 'triangle', freq: 210 * rate, glideTo: 520 * rate, dur: 0.14,
+        vol: v(0.34), at, attack: 0.003, filterType: 'lowpass', filterFreq: 1800,
+      });
+      osc(ctx, target, {
+        type: 'sine', freq: 140 * rate, glideTo: 340 * rate, dur: 0.12,
+        vol: v(0.28), at, attack: 0.002,
+      });
+      // 2) Crisp tire-bite asphalt chirp + thump as the hop lands (~0.18s later)
+      kick(ctx, target, { at: at + 0.17, vol: v(0.32), freq: 125, glideTo: 48, dur: 0.12 });
+      noise(ctx, target, {
+        dur: 0.16, vol: v(0.26), at: at + 0.17, filterType: 'bandpass',
+        freq: 1350, q: 4.5, glideTo: 1950, attack: 0.008, sustain: true, release: 0.05,
+      });
+      break;
+    }
+
     case 'uiClick': {
       // Soft tactile click (no raw squares): a lowpassed triangle blip
       // through a gentle bandpass + a micro noise tick — feels like a

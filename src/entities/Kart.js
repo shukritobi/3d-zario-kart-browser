@@ -2050,6 +2050,13 @@ export class Kart {
     this._nudgeVel.set(0, 0, 0);
     this._boostVisPrev = false; // AUDIT: no stale boost sparkle on restart
     this._driftTier = 0;
+    this._driftHopT = 0;
+    this._driftHopLanded = false;
+    this._driftHopLandBurst = false;
+    this._driftBtnWasDown = false;
+    this._driftYawOffset = 0;
+    s.driftHopping = false;
+    s.driftDir = 0;
     this._lineAcc = 0;
     this._lastProgress = 0;
     this._lapCheckpoint = 0; // avoids a phantom lap on restart
@@ -2230,6 +2237,13 @@ export class Kart {
     this._finishActive = false; // AUDIT r7: no stale finish celebration
     this._boostVisPrev = false; // AUDIT: no stale boost sparkle on reset
     this._driftTier = 0;
+    this._driftHopT = 0;
+    this._driftHopLanded = false;
+    this._driftHopLandBurst = false;
+    this._driftBtnWasDown = false;
+    this._driftYawOffset = 0;
+    this.state.driftHopping = false;
+    this.state.driftDir = 0;
     this._lineAcc = 0;
     this._finishMs = 0;
     if (this._finishFlag) this._finishFlag.visible = false;
@@ -2414,15 +2428,42 @@ export class Kart {
 
     // sync transform
     this.group.position.copy(s.position);
-    this.group.rotation.y = s.heading;
+
+    // Mario Kart Hop-Into-Drift: crisp parabolic hop arc (0.42m peak over 240ms)
+    // when clicking/holding the Drift button!
+    const hopT = this._driftHopT && this._driftHopT > 0 && (this._airTime || 0) <= 0.04 ? this._driftHopT : 0;
+    if (hopT > 0) {
+      this.group.position.y += Math.sin(hopT * Math.PI) * 0.42;
+    }
+
+    // Mario Kart Crab-Slide Body Slip Yaw:
+    // During the hop and while drifting, the kart body angles ~16–22° inward into
+    // the turn while sliding sideways! `s.heading` remains pure so the chase camera
+    // never jerks or causes dizziness.
+    const activeDriftDir = s.drifting
+      ? (s.driftDir || (Math.abs(this._controls.steer) > 0.06 ? Math.sign(this._controls.steer) : 0))
+      : (hopT > 0 ? (s.driftDir || (Math.abs(this._controls.steer) > 0.06 ? Math.sign(this._controls.steer) : 0)) : 0);
+    const slipYawTarget = activeDriftDir !== 0
+      ? -activeDriftDir * (0.24 + Math.abs(this._controls.steer) * 0.12 + (s.driftCharge || 0) * 0.06)
+      : 0;
+    this._driftYawOffset = THREE.MathUtils.lerp(
+      this._driftYawOffset || 0,
+      slipYawTarget,
+      Math.min(1, (hopT > 0 ? 16 : 10) * dt)
+    );
+    this.group.rotation.y = s.heading + this._driftYawOffset;
 
     // lean into turns, nose-up on accel, ramp slope climb, airborne arc, and 360° trick flips!
     const speed01 = Math.min(1, Math.abs(s.speed) / CONFIG.physics.maxSpeed);
     const steerVis = this._controls.steer * speed01;
     // AUDIT: MK8D banking — 0.09 rad (~5°) read as 'no suspension movement';
     // raise to ~8° lean + stronger drift tilt so cornering reads on the body.
-    let rollTarget = -steerVis * 0.14 - (s.drifting ? this._controls.steer * 0.06 : 0);
+    let rollTarget = -steerVis * 0.14 - (s.drifting ? (activeDriftDir || this._controls.steer) * 0.08 : 0);
     let pitchTarget = s.spinOut ? 0 : (this._controls.throttle ? 0.05 : (this._controls.brake ? -0.04 : 0));
+    if (hopT > 0) {
+      // Crisp nose-up pop during the Mario Kart drift hop!
+      pitchTarget -= Math.sin(hopT * Math.PI) * 0.15;
+    }
 
     if (s.onRamp && (!this._airTime || this._airTime < 0.05)) {
       // Pitch nose up to match the ramp wedge slope while climbing
@@ -2628,29 +2669,59 @@ export class Kart {
       });
     }
 
-    // drift smoke (rear wheels) — color tracks charge: white → yellow → orange
+    // Mario Kart Drift Hop Landing Tire Smoke Burst (both rear wheels slam down!)
+    if (this._driftHopLandBurst) {
+      this._driftHopLandBurst = false;
+      for (const side of [-1, 1]) {
+        this._localToWorld(this._pv, side * 0.72, this.rideHeight + 0.08, -0.74);
+        this._v.copy(this._back).multiplyScalar(1.6);
+        this._side.set(Math.cos(h), 0, -Math.sin(h)).multiplyScalar(side * 2.4);
+        this._v.add(this._side);
+        particles.emit('drift', this._pv, { count: 7, velocity: this._v, spread: 1.15, size: 0.44, color: 0xf1f5f9 });
+        particles.emit('sparkle', this._pv, { count: 5, speed: 3.8, size: 0.18, color: s.drifting ? 0x38bdf8 : 0xffd166 });
+      }
+    }
+
+    // Mario Kart Dual-Tire Drift Smoke + 3-Tier Sparks (White Smoke + Blue -> Orange -> Purple Sparks!)
     if (s.drifting && speedAbs >= CONFIG.physics.driftMinSpeed) {
       this._driftAcc += dt;
-      if (this._driftAcc >= 0.05) {
+      if (this._driftAcc >= 0.036) {
         this._driftAcc = 0;
-        this._localToWorld(this._pv, this._sideFlip * 0.7, this.rideHeight + 0.1, -0.72);
-        this._v.copy(this._back).multiplyScalar(0.8);
-        this._side.set(Math.cos(h), 0, -Math.sin(h)).multiplyScalar(this._controls.steer * 2.2);
-        this._v.add(this._side);
-        const charge = s.driftCharge;
-        const driftColor = charge < 0.33 ? 0xffffff : charge < 0.66 ? 0xffd166 : 0xff9f45;
-        // AUDIT R16c: size 0.3→0.38 + 2 puffs por frame — drift smoke mais denso
-        particles.emit('drift', this._pv, { velocity: this._v, spread: 0.7, size: 0.38, color: driftColor });
-        if (charge >= 0.33) {
-          particles.emit('drift', this._pv, { velocity: this._v, spread: 0.9, size: 0.3, color: driftColor });
+        const charge = s.driftCharge || 0;
+        const tier = charge >= 0.9 ? 3 : charge >= 0.66 ? 2 : charge >= 0.33 ? 1 : 0;
+        const sparkColor = tier === 3 ? 0xd946ef : tier === 2 ? 0xff9f45 : tier === 1 ? 0x38bdf8 : 0xfef08a;
+        const activeDir = s.driftDir || (Math.abs(this._controls.steer) > 0.06 ? Math.sign(this._controls.steer) : 0);
+
+        // Emit billowing white/silver tire smoke from BOTH rear tires every tick
+        for (const side of [-1, 1]) {
+          const isOutsideTire = activeDir === 0 || side === -activeDir;
+          this._localToWorld(this._pv, side * 0.72, this.rideHeight + 0.09, -0.74);
+          this._v.copy(this._back).multiplyScalar(1.1);
+          this._side.set(Math.cos(h), 0, -Math.sin(h)).multiplyScalar((this._controls.steer * 2.2) + side * 0.65);
+          this._v.add(this._side);
+          particles.emit('drift', this._pv, {
+            velocity: this._v,
+            spread: isOutsideTire ? 0.92 : 0.65,
+            size: isOutsideTire ? 0.42 : 0.30,
+            color: 0xf1f5f9,
+          });
+          if (tier >= 1 && isOutsideTire) {
+            particles.emit('sparkle', this._pv, {
+              count: tier === 3 ? 3 : 2,
+              speed: 3.2 + tier * 0.8,
+              size: 0.16 + tier * 0.05,
+              color: sparkColor,
+            });
+          }
         }
-        // AUDIT: tier crossing sparks — MK8 pops bright sparks when the drift
-        // charge reaches each tier (white→yellow→orange), not just a color swap.
-        const tier = charge >= 0.66 ? 2 : charge >= 0.33 ? 1 : 0;
+
+        // Tier-crossing pop burst when advancing Blue -> Orange -> Purple
         if (tier > this._driftTier) {
           this._driftTier = tier;
-          this._localToWorld(this._pv, this._sideFlip * 0.7, this.rideHeight + 0.1, -0.72);
-          particles.emit('sparkle', this._pv, { count: 6, speed: 3.5, size: 0.12, color: tier === 2 ? 0xff9f45 : 0xffd166 });
+          for (const side of [-1, 1]) {
+            this._localToWorld(this._pv, side * 0.72, this.rideHeight + 0.12, -0.74);
+            particles.emit('sparkle', this._pv, { count: 8, speed: 4.5, size: 0.22, color: sparkColor });
+          }
         } else if (tier < this._driftTier) {
           this._driftTier = tier;
         }
