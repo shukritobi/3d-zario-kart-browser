@@ -514,6 +514,8 @@ function wireGrassExit(kart) {
   };
 }
 
+const _fxPos = new THREE.Vector3();
+
 function wireMiniBoost(kart) {
   kart._onHit = (type) => {
     // PLAYER hit feedback (user request): red screen flash + label + shake —
@@ -541,8 +543,15 @@ function wireMiniBoost(kart) {
     touch?.pulse?.('hit');
   };
   kart._onDraftExit = () => {
-    // Slingshot pop when leaving a wake (player only).
-    if (kart.isPlayer) audio.play('driftReleaseMiniBoost', { volume: 0.5 });
+    // Slipstream Slingshot Boost when drafting behind a rival kart!
+    if (kart.isPlayer) {
+      audio.play('slipstream', { volume: 0.65 });
+      hud.showMessage('💨 SLIPSTREAM BOOST!', 1100);
+      if (particles) {
+        _fxPos.set(kart.state.position.x, kart.state.position.y + 0.55, kart.state.position.z);
+        particles.emit('boost', _fxPos, { count: 16, speed: 7.5, size: 0.28, color: 0x38bdf8 });
+      }
+    }
   };
   kart._onTrick = () => {
     // Trick landing boost — sparkle burst + pop (mostly for the player).
@@ -572,13 +581,30 @@ function wireMiniBoost(kart) {
       addShake(0.3, 0.3);
     }
   };
-  kart._onMiniBoost = (charge01 = 1) => {
+  kart._onMiniBoost = (charge01 = 1, tier = 1) => {
     const v = (kart.isPlayer ? 0.8 : 0.45) * (0.5 + charge01 * 0.5);
-    audio.play('driftReleaseMiniBoost', { volume: v, pan: (kart.group.position.x - playerKart.group.position.x) * 0.02 });
-    if (kart.isPlayer) touch?.pulse?.('miniBoost');
+    audio.play('driftReleaseMiniBoost', {
+      volume: v,
+      rate: tier === 3 ? 1.22 : tier === 2 ? 1.1 : 1.0,
+      pan: (kart.group.position.x - playerKart.group.position.x) * 0.02,
+    });
+    if (kart.isPlayer) {
+      touch?.pulse?.('miniBoost');
+      if (tier === 3) {
+        hud.showMessage('💜 ULTRA MINI-TURBO!', 950);
+      } else if (tier === 2) {
+        hud.showMessage('🔥 SUPER MINI-TURBO!', 850);
+      }
+    }
     if (particles) {
-      particles.emit('sparkle', kart.state.position.clone().add(new THREE.Vector3(0, 0.6, 0)), {
-        count: Math.round(5 + charge01 * 13), speed: 3.0 + charge01 * 2.5, size: 0.22, spread: 1.4 + charge01 * 0.4, color: 0xffd166,
+      _fxPos.set(kart.state.position.x, kart.state.position.y + 0.6, kart.state.position.z);
+      const sparkColor = tier === 3 ? 0xd946ef : tier === 2 ? 0xff9f45 : 0x38bdf8;
+      particles.emit('sparkle', _fxPos, {
+        count: Math.round(6 + charge01 * 14),
+        speed: 3.2 + charge01 * 2.8,
+        size: 0.24,
+        spread: 1.4 + charge01 * 0.4,
+        color: sparkColor,
       });
     }
   };
@@ -589,13 +615,15 @@ function wireMiniBoost(kart) {
     const v = kart.isPlayer ? 0.5 : 0.26;
     audio.play(tier === 1 ? 'uiClick' : 'posUp', {
       volume: v,
+      rate: tier === 3 ? 1.18 : 1.0,
       pan: (kart.group.position.x - playerKart.group.position.x) * 0.02,
     });
     if (particles) {
-      particles.emit('sparkle', kart.state.position.clone().add(new THREE.Vector3(0, 0.6, 0)), {
+      _fxPos.set(kart.state.position.x, kart.state.position.y + 0.6, kart.state.position.z);
+      particles.emit('sparkle', _fxPos, {
         count: tier === 1 ? 6 : tier === 2 ? 10 : 16, speed: 3.2, size: 0.18,
         spread: 1.0 + tier * 0.2,
-        color: tier === 1 ? 0x9adcff : tier === 2 ? 0xffa64d : 0xc86bff,
+        color: tier === 1 ? 0x38bdf8 : tier === 2 ? 0xff9f45 : 0xd946ef,
       });
     }
   };
@@ -1093,29 +1121,40 @@ function startRaceInit() {
       kart: r.kart,
       totalTime: r.kart?.totalTime,
     })), TRACK_NAMES[TRACK_ID] || 'Meadow Circuit');
-    // Celebration burst as the player crosses the line (art-bible: reward juice).
+    // Celebration burst for podium (1st–3rd) or sad smoke puff for 4th–6th.
     if (playerKart && playerKart.state) {
-      const p = playerKart.state.position.clone();
-      p.y += 1.2;
-      particles.emit('confetti', p, { count: 80 });
-      particles.emit('confetti', p, { count: 60, color: 0xffd166 });
-      particles.emit('sparkle', p, { count: 40, speed: 4, size: 0.3, color: 0xffffff });
+      _fxPos.set(playerKart.state.position.x, playerKart.state.position.y + 1.2, playerKart.state.position.z);
+      if (place <= 3) {
+        particles.emit('confetti', _fxPos, { count: 80 });
+        particles.emit('confetti', _fxPos, { count: 60, color: 0xffd166 });
+        particles.emit('sparkle', _fxPos, { count: 40, speed: 4, size: 0.3, color: 0xffffff });
+      } else {
+        particles.emit('exhaust', _fxPos, { count: 36, speed: 2.2, size: 0.45, color: 0x555b6e });
+      }
     }
     // Cruise mode (genre standard): the kart keeps driving automatically at
-    // reduced speed, engine hums quietly and the music swells over the SFX.
+    // reduced speed, engine hums quietly and the results music plays.
     playerKart.cruiseSpeed = CONFIG.physics.maxSpeed * 0.6;
     raceManager.aiControllers.push(new AIController(playerKart, track, raceManager));
-    audio.duckMusic(0.35, 2600); // AUDIT R59: duck de verdade (0.35 = música a 35% para destacar a fanfarra; era 1.0 = levantava a 100%)
+    audio.duckMusic(0.35, 1800);
     audio.play('finish');
-    // Victory fanfare only for podium (was playing for EVERY finish).
-    // AUDIT r3: the bare setTimeout fired victory over a fresh race if the
-    // player restarted inside the 400ms window — guard on state + phase.
+    clearTimeout(window.__victoryTimer);
     if (place <= 3) {
       window.__victoryTimer = setTimeout(() => {
         if (getState() === STATES.FINISHED && raceManager.phase === 'finished') {
           audio.play('victory');
+          audio.setResultMusic?.('victory');
         }
-      }, 400);
+      }, 380);
+    } else {
+      // 4th–6th place (especially 6th / last place): play descending sad trombone
+      // fanfare and transition to the minor-key Sad Tailpipe Blues defeat song!
+      window.__victoryTimer = setTimeout(() => {
+        if (getState() === STATES.FINISHED && raceManager.phase === 'finished') {
+          audio.play('defeat');
+          audio.setResultMusic?.('defeat');
+        }
+      }, 380);
     }
     setState(STATES.FINISHED);
   };
@@ -1166,6 +1205,8 @@ function togglePause() {
 }
 
 function restartRace() {
+  clearTimeout(window.__victoryTimer);
+  audio.setResultMusic?.(null);
   audio.clearEngineLoops(); // restart engine sounds from scratch (no echo/doubling)
   aiAudioSelectionT=0;aiAudioNearest.clear();
   // The finish-cruise AIController on the player kart is dropped inside
@@ -1206,6 +1247,8 @@ function restartRace() {
 }
 
 function gotoMenu() {
+  clearTimeout(window.__victoryTimer);
+  audio.setResultMusic?.(null);
   raceManager.phase = 'idle';
   raceManager.raceOver = false;
   setState(STATES.MENU);
@@ -1281,8 +1324,28 @@ function updateCamera(dt, t) {
     );
     env.shadowSun.target.position.copy(sp);
   }
-  if (getState() === STATES.FINISHED) return;
   if (window.__freezeCam) return; // QA hook: freeze the chase camera
+  if (getState() === STATES.FINISHED) {
+    // Mario Kart Results / Podium Orbit Camera: smoothly orbit around the cruising
+    // player kart while the Victory Trophy or Sad Tailpipe Blues music plays.
+    if (playerKart && playerKart.state) {
+      const st = playerKart.state;
+      const yaw = st.heading || 0;
+      const roadY = typeof st.groundY === 'number' ? st.groundY : st.position.y;
+      const orbitAng = yaw + Math.sin(t * 0.45) * 0.65;
+      _camDesired.set(
+        st.position.x - Math.sin(orbitAng) * 4.8,
+        roadY + 2.15,
+        st.position.z - Math.cos(orbitAng) * 4.8
+      );
+      camPos.lerp(_camDesired, 1 - Math.exp(-3.5 * dt));
+      camera.position.copy(camPos);
+      _camLook.set(st.position.x, roadY + 0.85, st.position.z);
+      lookTarget.lerp(_camLook, Math.min(1, dt * 6));
+      camera.lookAt(lookTarget);
+    }
+    return;
+  }
   if (DEMO) {
     // Cinematic autopilot: chase the player kart with a swaying side offset
     // so QA frames show karts, road and environment up close.
@@ -1451,6 +1514,7 @@ loop.start((dt, t) => {
         if (playerKart && playerKart.applyBoost && (input.throttle || settings.autoAccel || isTouchMode())) {
           window.__rocketFired = true;
           playerKart.applyBoost(900);
+          hud.showMessage('🚀 ROCKET START!', 1100);
           particles.emit('boost', playerKart.group.position, { count: 22, speed: 9, size: 0.32 });
         }
       }
@@ -1503,6 +1567,7 @@ loop.start((dt, t) => {
             window.__rocketFired = true;
             const ms = Math.round(300 + (1 - sinceGo / 0.35) * 600); // 900→300ms
             playerKart.applyBoost(ms);
+            hud.showMessage('🚀 ROCKET START!', 1100);
             particles.emit('boost', playerKart.group.position, { count: 14, speed: 8, size: 0.28 });
           }
         }
@@ -1776,8 +1841,8 @@ loop.start((dt, t) => {
     updateCamera(dt, t);
   }
 
+  particles.update(dt);
   if (!terminalPresentation) {
-    particles.update(dt);
     skids.update(dt);
   }
   postfx.render(dt);

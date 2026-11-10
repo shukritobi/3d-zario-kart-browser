@@ -22,6 +22,7 @@
 import { CONFIG } from '../config.js';
 import { TRACK_PATH, CITY_PATH } from '../track/TrackBuilder.js';
 import { CANYON_PATH, SKY_PATH, VOLCANO_PATH, MANSION_PATH } from '../track/ExtraTracks.js';
+import { racerShowroom3D } from './RacerShowroom3D.js';
 import './ui.css';
 
 /** [action, keyboard, touch] rows for the "How to Play" table. */
@@ -746,10 +747,19 @@ export class Menu {
         s.classList.add('sk3d-hidden');
       }
     }
+    if (screen === this.screenRacers) {
+      racerShowroom3D.renderAllCards(this.charCards, drawKart);
+      racerShowroom3D.startLive(this.charCards, () => this.selectedChar);
+      const activeCard = this.charCards[this.selectedChar];
+      if (activeCard) this._centerCard(this.charStrip, activeCard);
+    } else {
+      racerShowroom3D.stopLive();
+    }
   }
 
   /** Close the selection screens back to the main card. */
   closeScreens() {
+    racerShowroom3D.stopLive();
     if (this.screenRacers.classList.contains('sk3d-hidden') && this.screenTracks.classList.contains('sk3d-hidden')) return;
     this.screenRacers.classList.add('sk3d-hidden');
     this.screenTracks.classList.add('sk3d-hidden');
@@ -824,12 +834,9 @@ export class Menu {
     card.setAttribute('aria-checked', String(sel));
   }
 
-  /** Repaint every canvas (kart silhouettes + track layouts). */
+  /** Repaint every canvas (3D showroom kart previews + track layouts). */
   drawAllCanvases() {
-    for (const card of this.charCards) {
-      const canvas = card.querySelector('canvas');
-      if (canvas) drawKart(canvas, CONFIG.kart.characters[Number(card.dataset.index)]);
-    }
+    racerShowroom3D.renderAllCards(this.charCards, drawKart);
     for (const card of this.trackCards) {
       const canvas = card.querySelector('canvas');
       const t = TRACKS.find((x) => x.id === Number(card.dataset.track));
@@ -916,6 +923,7 @@ export class Menu {
   }
 
   hide() {
+    racerShowroom3D.stopLive();
     this.root.classList.add('sk3d-hidden');
   }
 }

@@ -39,6 +39,9 @@ const CHORDS = {
   B7:     [47, 51, 54, 57],
   Dmaj7:  [50, 54, 57, 61],
   Gadd9:  [43, 47, 50, 54, 57],
+  Cm7:    [48, 51, 55, 58],
+  Fm7:    [41, 44, 48, 51],
+  Abmaj7: [44, 48, 51, 55],
 };
 
 // Pentatonic & scale pools per key (for counter-chimes & sparkles)
@@ -49,6 +52,7 @@ const PENTA = {
   F:  [53, 57, 60, 62, 65, 69, 72, 74],
   G:  [55, 59, 62, 64, 67, 71, 74, 76],
   Em: [52, 55, 59, 62, 64, 67, 71, 74],
+  Cm: [48, 51, 53, 55, 58, 60, 63, 67],
 };
 
 // ------------------------------------------------------------
@@ -322,6 +326,74 @@ const STAR_TRACK = {
   ],
 };
 
+// Mario Kart DS Podium / Trophy Victory Song (1st–3rd Place Celebration!)
+const VICTORY_TRACK = {
+  name: 'Victory Trophy',
+  key: 'C',
+  bpm: 148,
+  chords: ['Cmaj7', 'Fmaj7', 'G7', 'Cmaj7'],
+  barsPerChord: 1,
+  cycles: Infinity,
+  leadInstrument: 'brass',
+  padType: 'sawtooth',
+  padFilter: 2200,
+  padWobble: 0.35,
+  padGain: 1.05,
+  chimeVol: 0.22,
+  chimeDensity: 0.9,
+  bassVol: 0.35,
+  drumVol: 0.28,
+  kickPattern:  [1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0],
+  snarePattern: [0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1],
+  hatPattern:   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  bassPattern:  [1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0],
+  bassWalk:     [0, 0, 12, 0, 7, 9, 12, 0, 0, 0, 12, 0, 4, 7, 12, 0],
+  stabPattern:  [1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1],
+  leadPattern: [
+    // Jubilant Mario Kart Trophy Brass Fanfare
+    72, 0, 76, 79, 84, 0, 81, 0, 79, 0, 76, 79, 81, 0, 79, 0,
+    77, 0, 81, 84, 86, 0, 84, 83, 84, 0, 79, 0, 84, 0, 0, 0,
+  ],
+  leadGate: [
+    1, 0, 1, 1, 2, 0, 2, 0, 1, 0, 1, 1, 2, 0, 2, 0,
+    1, 0, 1, 1, 2, 0, 1, 1, 2, 0, 2, 0, 3, 0, 0, 0,
+  ],
+};
+
+// Mario Kart Sad Last-Place / Out-of-Podium Song (Comedic Sad Trombone Minor Blues!)
+const DEFEAT_TRACK = {
+  name: 'Sad Tailpipe Blues',
+  key: 'Cm',
+  bpm: 88,
+  chords: ['Cm7', 'Fm7', 'G7', 'Cm7'],
+  barsPerChord: 1,
+  cycles: Infinity,
+  leadInstrument: 'sad_trombone',
+  padType: 'triangle',
+  padFilter: 980,
+  padWobble: 0.75,
+  padGain: 0.85,
+  chimeVol: 0.08,
+  chimeDensity: 0.25,
+  bassVol: 0.32,
+  drumVol: 0.18,
+  kickPattern:  [1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+  snarePattern: [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+  hatPattern:   [1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1],
+  bassPattern:  [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+  bassWalk:     [0, 0, 0, 0, -1, 0, 0, 0, -2, 0, 0, 0, -5, 0, 0, 0],
+  stabPattern:  [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+  leadPattern: [
+    // Comedic descending "wah-wah-waaaah" minor-key lament
+    75, 0, 74, 0, 72, 0, 71, 0, 72, 0, 67, 0, 63, 0, 0, 0,
+    68, 0, 67, 0, 65, 0, 63, 0, 62, 0, 60, 0, 0, 0, 0, 0,
+  ],
+  leadGate: [
+    2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 3, 0, 0, 0,
+    2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 4, 0, 0, 0, 0, 0,
+  ],
+};
+
 const STEPS_PER_BEAT = 4; // 16th notes
 const SWING = 0.54;       // tight arcade groove (snappy, not sluggish)
 const LOOKAHEAD = 0.35;   // scheduler lookahead window (s)
@@ -465,7 +537,7 @@ export class MusicEngine {
     const want = !!active;
     if (want === this._starMode) return;
     this._starMode = want;
-    if (!this._playing || this._menu) return;
+    if (!this._playing || this._menu || this._resultMode) return;
     if (want) {
       this._savedTrackBeforeStar = this._currentTrack;
       this._currentTrack = STAR_TRACK;
@@ -474,6 +546,34 @@ export class MusicEngine {
       this._currentTrack = this._savedTrackBeforeStar;
       this._savedTrackBeforeStar = null;
       this._step = 0;
+    }
+  }
+
+  /**
+   * Switch into Post-Race Results music ('victory' for 1st–3rd place,
+   * 'defeat' for 4th–6th / last place, or null to restore race music).
+   */
+  setResultMode(mode) {
+    const clean = mode === 'victory' || mode === 'defeat' ? mode : null;
+    if (clean === this._resultMode) return;
+    this._resultMode = clean;
+    this._starMode = false;
+    if (!this._playing) return;
+    if (clean === 'victory') {
+      this._savedTrackBeforeResult = this._savedTrackBeforeResult || this._currentTrack;
+      this._currentTrack = VICTORY_TRACK;
+      this._step = 0;
+      this.setIntensity(0.65);
+    } else if (clean === 'defeat') {
+      this._savedTrackBeforeResult = this._savedTrackBeforeResult || this._currentTrack;
+      this._currentTrack = DEFEAT_TRACK;
+      this._step = 0;
+      this.setIntensity(0.25);
+    } else if (this._savedTrackBeforeResult) {
+      this._currentTrack = this._savedTrackBeforeResult;
+      this._savedTrackBeforeResult = null;
+      this._step = 0;
+      this.setIntensity(0.5);
     }
   }
 
@@ -757,19 +857,19 @@ export class MusicEngine {
 
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
-    const baseCut = mode === 'synth' ? 3800 : mode === 'harpsichord' ? 4200 : 2900;
+    const baseCut = mode === 'synth' ? 3800 : mode === 'harpsichord' ? 4200 : mode === 'sad_trombone' ? 1450 : 2900;
     filter.frequency.setValueAtTime(baseCut * 0.55, time);
     filter.frequency.exponentialRampToValueAtTime(baseCut * (1 + 0.35 * this._intensity), time + 0.045);
-    filter.Q.value = mode === 'synth' ? 2.2 : 1.3;
+    filter.Q.value = mode === 'synth' ? 2.2 : mode === 'sad_trombone' ? 2.6 : 1.3;
     filter.connect(outGain);
     outGain.connect(this._bus);
 
     // Expressive vibrato on sustained notes
     const lfo = ctx.createOscillator();
-    lfo.frequency.value = mode === 'harpsichord' ? 6.5 : 5.6;
+    lfo.frequency.value = mode === 'harpsichord' ? 6.5 : mode === 'sad_trombone' ? 4.8 : 5.6;
     const lfoGain = ctx.createGain();
     lfoGain.gain.setValueAtTime(0.001, time);
-    lfoGain.gain.linearRampToValueAtTime(freq * (mode === 'harpsichord' ? 0.014 : 0.008), time + 0.08);
+    lfoGain.gain.linearRampToValueAtTime(freq * (mode === 'harpsichord' ? 0.014 : mode === 'sad_trombone' ? 0.022 : 0.008), time + 0.08);
     lfo.connect(lfoGain);
     lfo.start(time);
     lfo.stop(time + dur + 0.05);
@@ -778,14 +878,22 @@ export class MusicEngine {
       ? [{ type: 'triangle', detune: 0, mult: 1, gain: 0.85 }, { type: 'sine', detune: 5, mult: 2, gain: 0.35 }]
       : mode === 'harpsichord'
       ? [{ type: 'sawtooth', detune: -6, mult: 1, gain: 0.65 }, { type: 'square', detune: 6, mult: 2, gain: 0.35 }]
+      : mode === 'sad_trombone'
+      ? [{ type: 'sawtooth', detune: -10, mult: 0.5, gain: 0.72 }, { type: 'triangle', detune: 6, mult: 1, gain: 0.45 }]
       : [{ type: 'sawtooth', detune: -8, mult: 1, gain: 0.58 }, { type: 'sawtooth', detune: 8, mult: 1, gain: 0.58 }, { type: 'square', detune: 0, mult: 1, gain: 0.28 }];
 
     for (const v of voices) {
       const osc = ctx.createOscillator();
       osc.type = v.type;
-      // Brass pitch-scoop attack (starts 3% flat and snaps to pitch in 18ms)
-      osc.frequency.setValueAtTime(freq * v.mult * 0.975, time);
-      osc.frequency.exponentialRampToValueAtTime(freq * v.mult, time + 0.018);
+      if (mode === 'sad_trombone') {
+        // Comedic sad-trombone pitch droop (starts on pitch and sags down -3% over the note!)
+        osc.frequency.setValueAtTime(freq * v.mult, time);
+        osc.frequency.exponentialRampToValueAtTime(freq * v.mult * 0.97, time + dur);
+      } else {
+        // Brass pitch-scoop attack (starts 2.5% flat and snaps to pitch in 18ms)
+        osc.frequency.setValueAtTime(freq * v.mult * 0.975, time);
+        osc.frequency.exponentialRampToValueAtTime(freq * v.mult, time + 0.018);
+      }
       osc.detune.value = v.detune;
       lfoGain.connect(osc.frequency);
       const vg = ctx.createGain();
@@ -1089,4 +1197,4 @@ export class MusicEngine {
   }
 }
 
-export { TRACKS, MENU_TRACK, STAR_TRACK };
+export { TRACKS, MENU_TRACK, STAR_TRACK, VICTORY_TRACK, DEFEAT_TRACK };

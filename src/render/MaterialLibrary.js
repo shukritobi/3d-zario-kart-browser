@@ -188,6 +188,7 @@ const _profileCheck = setInterval(() => {
     _lastProfileName = current;
   }
 }, 1500);
+_profileCheck.unref?.();
 
 /**
  * Named material-role kit (threejs-aaa-graphics-builder / technical-art.md).

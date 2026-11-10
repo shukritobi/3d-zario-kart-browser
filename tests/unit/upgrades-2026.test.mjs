@@ -16,7 +16,7 @@ import {
   renderPairingQRCodeSvg,
   SwitchHostBridge,
 } from '../../src/input/SwitchBridge.js';
-import { TRACKS, MENU_TRACK, STAR_TRACK } from '../../src/audio/music.js';
+import { TRACKS, MENU_TRACK, STAR_TRACK, VICTORY_TRACK, DEFEAT_TRACK } from '../../src/audio/music.js';
 
 test('Ramp physics: launches across center, left (-2.4m), and right (+2.4m) lanes and lands with 850ms Trick Boost', () => {
   const scene = new THREE.Scene();
@@ -345,4 +345,127 @@ test('iPhone Controller UI & UX: locked landscape D-pad layout, portrait-to-land
   // Clean up controller and bridge timers so Node exits immediately
   ctrl.destroy();
 });
+
+test('Victory Song & Sad Last-Place Song: VICTORY_TRACK (148 BPM brass fanfare), DEFEAT_TRACK (88 BPM sad_trombone lament), and SFX recipes', async () => {
+  // 1. Victory Trophy song (1st–3rd place podium)
+  assert.ok(VICTORY_TRACK, 'VICTORY_TRACK must be exported from src/audio/music.js');
+  assert.equal(VICTORY_TRACK.name, 'Victory Trophy');
+  assert.equal(VICTORY_TRACK.bpm, 148, 'Victory song should be a celebratory 148 BPM podium groove');
+  assert.equal(VICTORY_TRACK.leadInstrument, 'brass', 'Victory song should use celebratory brass lead');
+  assert.equal(VICTORY_TRACK.leadPattern.length, 32, 'Victory song should have a 32-step fanfare melody');
+
+  // 2. Sad Tailpipe Blues defeat song (4th–6th / last place)
+  assert.ok(DEFEAT_TRACK, 'DEFEAT_TRACK must be exported from src/audio/music.js');
+  assert.equal(DEFEAT_TRACK.name, 'Sad Tailpipe Blues');
+  assert.equal(DEFEAT_TRACK.bpm, 88, 'Sad defeat song should be a slow 88 BPM lament');
+  assert.equal(DEFEAT_TRACK.leadInstrument, 'sad_trombone', 'Sad defeat song should use sad_trombone lead voice');
+  assert.equal(DEFEAT_TRACK.leadPattern.length, 32, 'Sad defeat song should have a 32-step descending minor melody');
+
+  // 3. Verify SFX recipes include 'defeat', 'sadLose', and 'slipstream'
+  const fs = await import('node:fs');
+  const sfxSrc = fs.readFileSync(new URL('../../src/audio/sfx.js', import.meta.url), 'utf8');
+  const { renderSfx } = await import('../../src/audio/sfx.js');
+  assert.equal(typeof renderSfx, 'function', 'renderSfx must be exported from src/audio/sfx.js');
+  assert.ok(sfxSrc.includes("case 'defeat':"), 'src/audio/sfx.js must define defeat sad trombone fanfare recipe');
+  assert.ok(sfxSrc.includes("case 'sadLose':"), 'src/audio/sfx.js must define sadLose alias');
+  assert.ok(sfxSrc.includes("case 'slipstream':"), 'src/audio/sfx.js must define slipstream boost SFX recipe');
+});
+
+test('3D Racer Showroom in Racer Selection: RacerShowroom3D renders 3D Kart models onto character cards with single offscreen WebGL context and clean fallback', async () => {
+  const fs = await import('node:fs');
+  const showroomSrc = fs.readFileSync(new URL('../../src/ui/RacerShowroom3D.js', import.meta.url), 'utf8');
+  const menuSrc = fs.readFileSync(new URL('../../src/ui/Menu.js', import.meta.url), 'utf8');
+
+  assert.ok(showroomSrc.includes('new Kart('), 'RacerShowroom3D must instantiate real 3D Kart models for each racer');
+  assert.ok(showroomSrc.includes('startLive') && showroomSrc.includes('stopLive'), 'RacerShowroom3D must start and stop live turntable animation when opening/closing Racer Selection');
+  assert.ok(menuSrc.includes('racerShowroom3D.startLive'), 'Menu.js must start 3D Racer Showroom live preview when opening the Racers screen');
+  assert.ok(menuSrc.includes('racerShowroom3D.stopLive'), 'Menu.js must stop 3D Racer Showroom loop when closing screens or starting a race');
+
+  const { racerShowroom3D } = await import('../../src/ui/RacerShowroom3D.js');
+  assert.ok(racerShowroom3D, 'racerShowroom3D singleton must be exported');
+  // In headless Node (no WebGL context), renderAllCards must return false cleanly so 2D fallback runs without throwing
+  const rendered = racerShowroom3D.renderAllCards([]);
+  assert.equal(rendered, false, 'In headless Node without WebGL, renderAllCards should return false for graceful fallback');
+  racerShowroom3D.stopLive();
+});
+
+test('Playability Upgrades: 3-Tier Mini-Turbo Drift (Blue -> Orange Super -> Purple Ultra) and 13.5m Slipstream Slingshot Boost', () => {
+  const scene = new THREE.Scene();
+  const track = buildTrack(scene, TRACK_PATH, 1);
+  const startPt = track.path.getPointAt(0.05);
+  const startTan = track.path.getTangentAt(0.05).setY(0).normalize();
+  const startH = Math.atan2(startTan.x, startTan.z);
+
+  // 1. Test 3-Tier Mini-Turbo progression and Purple Ultra Mini-Turbo boost duration (1150ms)
+  const kart = new Kart({
+    character: CONFIG.kart.characters[0],
+    isPlayer: true,
+    startPosition: startPt.clone(),
+    startHeading: startH,
+  });
+  kart.state.speed = 32;
+
+  const tiersSeen = [];
+  let tierAwarded = 0;
+  kart._onDriftTier = (tier) => tiersSeen.push(tier);
+  kart._onMiniBoost = (_charge01, tier) => { tierAwarded = tier; };
+
+  // Hold drift + steer until reaching Tier 3 (Purple Ultra Mini-Turbo, charge >= 0.90)
+  for (let i = 0; i < 160; i++) {
+    kart.setControls({ steer: 0.85, throttle: 1, brake: false, drift: true });
+    kart.update(1 / 60, { track });
+    if (kart.state.driftTier === 3) break;
+  }
+  assert.deepEqual(tiersSeen, [1, 2, 3], 'Drifting should progress through Tier 1 (Blue), Tier 2 (Orange Super), and Tier 3 (Purple Ultra)');
+  assert.equal(kart.state.driftTier, 3, 'Kart should hold driftTier = 3 near full charge');
+
+  // Release drift to trigger Ultra Mini-Turbo boost
+  kart.setControls({ steer: 0, throttle: 1, brake: false, drift: false });
+  kart.update(1 / 60, { track });
+  assert.equal(tierAwarded, 3, 'Releasing a Tier 3 drift must award Tier 3 Ultra Mini-Turbo');
+  assert.equal(kart.state.boost, true, 'Kart boost state should be active after releasing Tier 3 drift');
+  assert.ok(kart._boostMs >= 1100, `Releasing a Tier 3 Ultra Mini-Turbo must grant ~1150ms boost (got ${kart._boostMs}ms)`);
+
+  // 2. Test 13.5m Slipstream Drafting Cone and Automatic Slingshot Boost after ~1.05s
+  const chaser = new Kart({
+    character: CONFIG.kart.characters[0],
+    isPlayer: true,
+    startPosition: startPt.clone(),
+    startHeading: startH,
+  });
+  const leader = new Kart({
+    character: CONFIG.kart.characters[1],
+    isPlayer: false,
+    startPosition: startPt.clone().addScaledVector(startTan, 9.5), // 9.5m ahead along road (inside new 13.5m cone!)
+    startHeading: startH,
+  });
+  leader.state.speed = 28;
+  chaser.state.speed = 28;
+
+  let draftSlingshotFired = false;
+  chaser._onDraftStart = () => {};
+  chaser._onDraftExit = (kind) => {
+    if (kind === 'slingshot') draftSlingshotFired = true;
+  };
+
+  const mockRm = { karts: [leader, chaser], elapsed: 5.0 };
+  for (let i = 0; i < 75; i++) {
+    mockRm.elapsed += 1 / 60;
+    const h = chaser.state.heading;
+    // Keep leader ~9.5m directly ahead of chaser along chaser's heading
+    leader.state.position.set(
+      chaser.state.position.x + Math.sin(h) * 9.5,
+      chaser.state.position.y,
+      chaser.state.position.z + Math.cos(h) * 9.5
+    );
+    leader.state.heading = h;
+    chaser.setControls({ steer: 0, throttle: 1, brake: false, drift: false });
+    chaser.update(1 / 60, { track, raceManager: mockRm });
+    if (draftSlingshotFired) break;
+  }
+  assert.equal(draftSlingshotFired, true, 'Holding slipstream within 13.5m for ~1.05s must trigger automatic Slipstream Slingshot Boost');
+  assert.equal(chaser.state.boost, true, 'Chaser kart boost state should be active after Slipstream Slingshot');
+  assert.ok(chaser._boostMs >= 700, `Slipstream Slingshot must apply >=700ms boost on the chaser kart (got ${chaser._boostMs}ms)`);
+});
+
 

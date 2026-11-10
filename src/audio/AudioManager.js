@@ -91,6 +91,7 @@ export class AudioManager {
         this.startMenuMusic();
       } else if (next === STATES.COUNTDOWN) {
         this.stopMenuMusic();
+        this.setResultMusic(null);
         this.setMusicIntensity(0.5);
       } else {
         this.stopMenuMusic();
@@ -481,6 +482,17 @@ export class AudioManager {
   setStarMusic(active) {
     if (this._music && typeof this._music.setStarMode === 'function') {
       this._music.setStarMode(active);
+    }
+  }
+
+  /**
+   * Switches post-race music into Victory Trophy ('victory', 1st–3rd place)
+   * or Sad Tailpipe Blues ('defeat', 4th–6th / last place), or restores
+   * the race track music when `mode` is null.
+   */
+  setResultMusic(mode) {
+    if (this._music && typeof this._music.setResultMode === 'function') {
+      this._music.setResultMode(mode);
     }
   }
 

@@ -14,6 +14,16 @@ if (typeof globalThis.window === 'undefined') {
   };
 }
 
+// Prevent Node.js worker_threads BroadcastChannel or undici fetch from holding
+// open event-loop handles during fast headless unit tests.
+globalThis.BroadcastChannel = class MockBroadcastChannel {
+  constructor(name) { this.name = name; this.onmessage = null; }
+  postMessage() {}
+  close() {}
+  unref() {}
+};
+globalThis.fetch = async () => ({ ok: false, json: async () => ({}) });
+
 if (typeof globalThis.document === 'undefined') {
   const make2dContext = () => {
     const grad = { addColorStop() {} };

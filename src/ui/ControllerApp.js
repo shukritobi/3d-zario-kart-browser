@@ -506,17 +506,18 @@ export function mountControllerApp(rootContainer) {
 
     clientBridge.sendInput(state);
   }, 33);
+  timer.unref?.();
 
   return {
     clientBridge,
     syncLandscapeViewport,
     destroy() {
       clearInterval(timer);
-      window.removeEventListener('resize', syncLandscapeViewport);
-      window.removeEventListener('orientationchange', syncLandscapeViewport);
-      window.visualViewport?.removeEventListener('resize', syncLandscapeViewport);
-      document.documentElement.classList.remove('zc-controller-html-lock');
-      document.body.classList.remove('zc-controller-body-lock');
+      window.removeEventListener?.('resize', syncLandscapeViewport);
+      window.removeEventListener?.('orientationchange', syncLandscapeViewport);
+      window.visualViewport?.removeEventListener?.('resize', syncLandscapeViewport);
+      document.documentElement?.classList?.remove?.('zc-controller-html-lock');
+      document.body?.classList?.remove?.('zc-controller-body-lock');
       clientBridge.stop();
       ui.remove?.();
     },

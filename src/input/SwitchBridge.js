@@ -367,6 +367,7 @@ export class SwitchHostBridge {
             this._handleIncomingPacket(msg, 'BroadcastChannel');
           }
         };
+        this._bc.unref?.();
       } catch { /* ignore */ }
     }
 
@@ -460,6 +461,7 @@ export class SwitchHostBridge {
         // Static build or offline
       }
     }, 45);
+    this._pollTimer.unref?.();
   }
 
   _handleIncomingPacket(packet, transportName) {
@@ -646,6 +648,7 @@ export class SwitchClientBridge {
             this._handleTelemetry(msg, 'BroadcastChannel');
           }
         };
+        this._bc.unref?.();
         this._bc.postMessage({
           type: 'controller_hello',
           roomCode: this.roomCode,
@@ -731,6 +734,7 @@ export class SwitchClientBridge {
         }
       } catch { /* ignore */ }
     }, 180);
+    this._pollTimer.unref?.();
   }
 
   _handleTelemetry(msg, transportName) {

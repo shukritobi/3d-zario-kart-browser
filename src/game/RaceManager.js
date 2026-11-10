@@ -39,6 +39,39 @@ const NEARMISS_COOLDOWN = 0.6;     // s between near-miss sparks per pair
 // jitter like createItemBoxes), single-collect per race, reset on restart.
 // ---------------------------------------------------------------------------
 
+let _sharedCoinGeo = null;
+let _sharedCoinMat = null;
+let _sharedCoinRimGeo = null;
+let _sharedCoinRimMat = null;
+let _sharedCoinHaloMat = null;
+
+function _ensureSharedCoinAssets() {
+  if (_sharedCoinGeo) return;
+  _sharedCoinGeo = new THREE.CylinderGeometry(0.17, 0.17, 0.06, 16);
+  _sharedCoinMat = new THREE.MeshToonMaterial({ color: 0xffd166, emissive: 0xffaa00, emissiveIntensity: 0.9 });
+  _sharedCoinRimGeo = new THREE.TorusGeometry(0.17, 0.02, 8, 16);
+  _sharedCoinRimMat = new THREE.MeshBasicMaterial({ color: 0xfff3c4 });
+  const haloCanvas = document.createElement('canvas');
+  haloCanvas.width = 64;
+  haloCanvas.height = 64;
+  const hg = haloCanvas.getContext('2d');
+  const hgrad = hg.createRadialGradient(32, 32, 8, 32, 32, 32);
+  hgrad.addColorStop(0, 'rgba(255,214,90,0.55)');
+  hgrad.addColorStop(0.6, 'rgba(255,180,40,0.18)');
+  hgrad.addColorStop(1, 'rgba(255,180,40,0)');
+  hg.fillStyle = hgrad;
+  hg.fillRect(0, 0, 64, 64);
+  const haloTex = new THREE.CanvasTexture(haloCanvas);
+  haloTex.userData = { shared: true };
+  _sharedCoinHaloMat = new THREE.SpriteMaterial({
+    map: haloTex,
+    transparent: true,
+    opacity: 0.9,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+}
+
 class Coin {
   /** @param {object|null} [at] optional explicit world position — used by
    *  AUDIT r8 dropped coins so they land where the kart scattered them
@@ -75,39 +108,14 @@ class Coin {
   }
 
   _buildMesh() {
-    const mesh = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.17, 0.17, 0.06, 18),
-      // AUDIT R16b (critic Rewards 1/3 'coins sem vida/visibilidade'): emissive
-      // 0.35→0.9 — a coin destaca da pista à distância da chase cam, sem ficar
-      // apagada (MK8 coins são LUMINOSAS).
-      new THREE.MeshToonMaterial({ color: 0xffd166, emissive: 0xffaa00, emissiveIntensity: 0.9 })
-    );
+    _ensureSharedCoinAssets();
+    const mesh = new THREE.Mesh(_sharedCoinGeo, _sharedCoinMat);
     mesh.position.set(this.base.x, this.base.y, this.base.z);
-    mesh.castShadow = true;
-    // bright rim so the coin reads as a coin, not a pebble
-    const rim = new THREE.Mesh(
-      new THREE.TorusGeometry(0.17, 0.02, 8, 18),
-      new THREE.MeshBasicMaterial({ color: 0xfff3c4 })
-    );
+    mesh.castShadow = false; // Shared coins use bright emissive + halo sprite, saving shadow-map draw calls
+    const rim = new THREE.Mesh(_sharedCoinRimGeo, _sharedCoinRimMat);
     rim.rotation.x = Math.PI / 2;
     mesh.add(rim);
-    // AUDIT R16b: glow halo (sprite circular) — dá à coin um 'brilho de moeda'
-    // legível à distância; additive + low alpha, sem toneMapped:false (lição
-    // R14: additive+toneMapped:false+bloom estoura em branco no GPU real).
-    const haloCanvas = document.createElement('canvas');
-    haloCanvas.width = 64; haloCanvas.height = 64;
-    const hg = haloCanvas.getContext('2d');
-    const hgrad = hg.createRadialGradient(32, 32, 8, 32, 32, 32);
-    hgrad.addColorStop(0, 'rgba(255,214,90,0.55)');
-    hgrad.addColorStop(0.6, 'rgba(255,180,40,0.18)');
-    hgrad.addColorStop(1, 'rgba(255,180,40,0)');
-    hg.fillStyle = hgrad;
-    hg.fillRect(0, 0, 64, 64);
-    const haloTex = new THREE.CanvasTexture(haloCanvas);
-    const halo = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: haloTex, transparent: true, opacity: 0.9,
-      blending: THREE.AdditiveBlending, depthWrite: false,
-    }));
+    const halo = new THREE.Sprite(_sharedCoinHaloMat);
     halo.scale.set(0.9, 0.9, 1);
     mesh.add(halo);
     return mesh;
@@ -122,8 +130,13 @@ class Coin {
     if (!this.active) return;
     this.bobPhase += dt * 2.6;
     if (this.mesh) {
-      this.mesh.position.y = this.base.y + Math.sin(this.bobPhase) * 0.12;
-      this.mesh.rotation.y += dt * 3.2; // spinning coin
+      // Distance-gate visual bobbing/rotation to coins within ~115m of the player
+      const pp = raceManager?.player?.state?.position;
+      const nearPlayer = !pp || ((pp.x - this.base.x) * (pp.x - this.base.x) + (pp.z - this.base.z) * (pp.z - this.base.z) < 13225);
+      if (nearPlayer) {
+        this.mesh.position.y = this.base.y + Math.sin(this.bobPhase) * 0.12;
+        this.mesh.rotation.y += dt * 3.2; // spinning coin
+      }
     }
     const list = karts || [];
     const r = CONFIG.items.coinPickupRadius;
@@ -147,7 +160,7 @@ class Coin {
     // Player gets the sparkle + blip; AI stays quiet (matches item pickups).
     if (raceManager && kart === raceManager.player) {
       raceManager.audio?.play?.('pickup', { volume: 0.55 }); // moeda = blip curto (era a fanfarra)
-      raceManager.particles?.emit?.('sparkle', new THREE.Vector3(this.base.x, this.base.y + 0.2, this.base.z), {
+      raceManager.particles?.emit?.('sparkle', { x: this.base.x, y: this.base.y + 0.2, z: this.base.z }, {
         count: 10, speed: 3.2, size: 0.18, color: 0xffd166,
       });
     }
@@ -155,8 +168,7 @@ class Coin {
   }
 
   dispose() {
-    this.mesh?.geometry?.dispose?.();
-    this.mesh?.material?.dispose?.();
+    // Shared coin geometries/materials are reused across races
   }
 }
 

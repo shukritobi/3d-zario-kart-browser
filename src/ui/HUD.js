@@ -223,6 +223,7 @@ export class HUD {
     this.countdownEl = this.root.querySelector('.sk3d-countdown');
     this.finishEl = this.root.querySelector('.sk3d-finish');
     this.finishCardEl = this.root.querySelector('.sk3d-finish-card');
+    this.finishTrophyEl = this.root.querySelector('.sk3d-finish-trophy');
     this.finishPlaceEl = this.root.querySelector('.sk3d-finish-place');
     this.finishBtnEl = this.root.querySelector('.sk3d-finish-btn');
     this.finishBtnEl.addEventListener('click', () => window.__sk3d?.restartRace?.());
@@ -1133,6 +1134,14 @@ export class HUD {
    *  @param {Array} [standings] final order [{ position, kart, totalTime }] — AUDIT r21 */
   showFinish(place, time, standings, trackName = '') {
     this.finishPlaceEl.textContent = ordinal(place);
+    if (this.finishTrophyEl) {
+      const icons = { 1: '🏆', 2: '🥈', 3: '🥉', 4: '🏁', 5: '🌧️', 6: '😢' };
+      this.finishTrophyEl.textContent = icons[place] || (place <= 3 ? '🏆' : '😢');
+    }
+    if (this.finishCardEl) {
+      this.finishCardEl.classList.toggle('sk3d-finish-podium', place <= 3);
+      this.finishCardEl.classList.toggle('sk3d-finish-defeat', place >= 4);
+    }
     if (this.finishTrackEl) this.finishTrackEl.textContent = trackName;
     this.finishTimeEl.textContent = formatTime(time);
     const rows = (standings && standings.length ? standings : [{ position: place, kart: null, totalTime: time }]);

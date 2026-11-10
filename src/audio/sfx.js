@@ -707,6 +707,78 @@ export function renderSfx(ctx, out, name, opts = {}) {
       break;
     }
 
+    case 'defeat':
+    case 'sadLose': {
+      // Classic Mario Kart Last-Place "Wah-Wah-Waaaah" Descending Sad Trombone!
+      // Chromatic descent: D4 -> C#4 -> C4 -> B3 gliding down to Bb3 with warble.
+      const sadNotes = [
+        { freq: 293.66, glide: 287.0, dur: 0.32, delay: 0.0 },
+        { freq: 277.18, glide: 271.0, dur: 0.32, delay: 0.36 },
+        { freq: 261.63, glide: 255.0, dur: 0.32, delay: 0.72 },
+        { freq: 246.94, glide: 226.0, dur: 0.95, delay: 1.08, warble: true },
+      ];
+      for (const sn of sadNotes) {
+        const nt = at + sn.delay;
+        osc(ctx, target, {
+          type: 'sawtooth',
+          freq: sn.freq * rate,
+          glideTo: sn.glide * rate,
+          dur: sn.dur,
+          vol: v(0.32),
+          at: nt,
+          attack: 0.015,
+          sustain: true,
+          release: 0.12,
+          filterType: 'lowpass',
+          filterFreq: 1150,
+          filterQ: 2.2,
+          lfoFreq: sn.warble ? 5.2 : 0,
+          lfoDepth: sn.warble ? 9.5 : 0,
+        });
+        osc(ctx, target, {
+          type: 'triangle',
+          freq: sn.freq * 0.5 * rate,
+          glideTo: sn.glide * 0.5 * rate,
+          dur: sn.dur,
+          vol: v(0.22),
+          at: nt,
+          attack: 0.015,
+          sustain: true,
+          release: 0.12,
+          filterType: 'lowpass',
+          filterFreq: 680,
+        });
+      }
+      // Low minor chord sigh at the end
+      for (const f of [130.81, 155.56, 196.0, 233.08]) {
+        osc(ctx, target, {
+          type: 'triangle',
+          freq: f * rate,
+          glideTo: f * 0.97 * rate,
+          dur: 1.1,
+          vol: v(0.09),
+          at: at + 1.08,
+          attack: 0.08,
+          sustain: true,
+          release: 0.25,
+          filterType: 'lowpass',
+          filterFreq: 720,
+        });
+      }
+      break;
+    }
+
+    case 'slipstream': {
+      // Wind-tunnel slingshot draft boost cue
+      noise(ctx, target, {
+        dur: 0.48, vol: v(0.22), at, filterType: 'bandpass',
+        freq: 620, q: 1.4, glideTo: 1850, attack: 0.04, sustain: true, release: 0.12,
+      });
+      chime(ctx, target, { freq: N.G5 * rate, dur: 0.28, vol: v(0.22), at: at + 0.06, partials: [1, 2, 3] });
+      chime(ctx, target, { freq: N.C6 * rate, dur: 0.36, vol: v(0.26), at: at + 0.15, partials: [1, 2, 3] });
+      break;
+    }
+
     case 'uiHover': {
       // Soft hover tick (USER FIX: sine + gentle triangle — the old square
       // was the sharpest '8-bit' artifact in the menu).

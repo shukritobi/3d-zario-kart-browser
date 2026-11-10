@@ -178,47 +178,52 @@ function updateDrift(kart, input, dt, speedAbs) {
     // rewards the longest holds.
     if (!kart._driftTier1 && s.driftCharge >= DRIFT_TIER_1) {
       kart._driftTier1 = true;
+      s.driftTier = 1;
       kart._onDriftTier?.(1);
     } else if (kart._driftTier1 && !kart._driftTier2 && s.driftCharge >= DRIFT_TIER_2) {
       kart._driftTier2 = true;
+      s.driftTier = 2;
       kart._onDriftTier?.(2);
     } else if (kart._driftTier2 && !kart._driftTier3 && s.driftCharge >= DRIFT_TIER_3) {
       kart._driftTier3 = true;
+      s.driftTier = 3;
       kart._onDriftTier?.(3);
     }
-    // Full charge: short grace window, then AUTO-RELEASE a full mini-boost
+    // Full charge: short grace window, then AUTO-RELEASE an Ultra Mini-Turbo
     // without manual release (MK8D: holding past the top fires the turbo for
     // you; still holding re-enters the drift and chains).
     if (s.driftCharge >= 1) {
       kart._driftFullT = (kart._driftFullT || 0) + dt;
       if (kart._driftFullT >= DRIFT_AUTO_FIRE_GRACE) {
-        kart.applyBoost(DRIFT_AUTO_BOOST_MS);
-        kart._onMiniBoost?.(1); // drama hook (SFX + spark burst) wired in main.js
+        kart.applyBoost(1150);
+        kart._onMiniBoost?.(1, 3); // drama hook (SFX + purple spark burst) wired in main.js
         s.drifting = false;
         s.driftCharge = 0;
+        s.driftTier = 0;
         kart._driftFullT = 0;
         kart._driftTier1 = false;
         kart._driftTier2 = false;
+        kart._driftTier3 = false;
       }
     }
   } else if (s.drifting) {
     if (s.driftCharge >= P.driftReleaseBoost) {
-      // Charge-scaled mini-boost (was a fixed 750ms): full charge = full kick,
-      // partial = short kick — risk/reward on how long you hold the drift.
+      // Authentic Mario Kart 3-Tier Mini-Turbo reward (Blue -> Orange -> Purple Ultra!):
       const charge01 = Math.min(1, s.driftCharge);
-      const ms = Math.round(300 + charge01 * 450); // 300..750ms
+      const tier = charge01 >= DRIFT_TIER_3 ? 3 : charge01 >= DRIFT_TIER_2 ? 2 : 1;
+      const ms = tier === 3 ? 1150 : tier === 2 ? 820 : Math.round(450 + charge01 * 300);
       kart.applyBoost(ms);
-      kart._onMiniBoost?.(charge01); // drama hook (SFX + spark burst) wired in main.js
+      kart._onMiniBoost?.(charge01, tier); // drama hook (SFX + spark burst) wired in main.js
     } else if (s.driftCharge > 0.15) {
-      // Sub-threshold release: no boost, so NO boost feedback (AUDIT MED:
-      // the old cue played mini-boost SFX + gold sparks while applyBoost
-      // never ran — a fake reward. MK8D keeps sub-threshold releases quiet.)
+      // Sub-threshold release: no boost, so NO boost feedback
     }
     s.drifting = false;
     s.driftCharge = 0;
+    s.driftTier = 0;
     kart._driftFullT = 0;
     kart._driftTier1 = false;
     kart._driftTier2 = false;
+    kart._driftTier3 = false;
   }
 }
 
@@ -386,33 +391,46 @@ export class KartPhysics {
         const op = other.state.position;
         const dx = op.x - s.position.x;
         const dz = op.z - s.position.z;
-        // same heading (dot > 0.95) and the other kart is AHEAD on that heading
         const dot = heading.x * dx + heading.z * dz;
-        if (dot < 1.0) continue; // must be ahead (and roughly in front)
+        if (dot < 0.9) continue; // must be ahead along our racing line
         const dist = Math.hypot(dx, dz);
-        if (dist > 4.0 || dist < 0.6) continue;
+        if (dist > 13.5 || dist < 0.7) continue;
         // lateral offset: perpendicular distance to the leader's line
         const px = heading.z * dx - heading.x * dz;
-        if (Math.abs(px) > 2.2) continue;
+        if (Math.abs(px) > 2.6) continue;
         // leader must be moving (so drafting means catching up)
         if (other.state.speed < 2) continue;
         s.draft = true;
-        target *= 1.08;
+        target *= 1.09;
         break;
       }
     }
-    // Draft-exit boost (audit v4 LOW / v5 #3): leaving a wake gives a real
-    // slingshot (600ms) with a cooldown so it can't be chained.
+    if (s.draft) {
+      kart._draftHoldT = (kart._draftHoldT || 0) + dt;
+      // Mario Kart DS / MK8D Slipstream Slingshot: holding in the slipstream wake
+      // for ~1.0s automatically triggers an 800ms slingshot boost!
+      if (kart.isPlayer && kart._draftHoldT >= 1.05 && !s.spinOut) {
+        const now = raceManager ? raceManager.elapsed : 0;
+        if (!kart._lastDraftExit || now - kart._lastDraftExit > 2.8) {
+          kart._lastDraftExit = now;
+          kart._draftHoldT = 0;
+          kart._wasDrafting = false;
+          kart.applyBoost(800);
+          kart._onDraftExit?.('slingshot');
+        }
+      }
+    } else {
+      kart._draftHoldT = 0;
+    }
+    // Draft-exit boost: pulling out of a slipstream wake to overtake gives a slingshot (700ms)
     if (!s.draft && kart._wasDrafting && !s.spinOut) {
       const now = raceManager ? raceManager.elapsed : 0;
       if (!kart._lastDraftExit || now - kart._lastDraftExit > 3) {
-        // AUDIT r5: draft exit-kick is PLAYER-only — AI trains used to chain
-        // free 600ms boosts, quietly widening the rubber band.
         if (!kart.isPlayer) {
           kart._wasDrafting = false;
         } else {
           kart._lastDraftExit = now;
-          kart.applyBoost(600);
+          kart.applyBoost(700);
           kart._onDraftExit?.();
         }
       }
