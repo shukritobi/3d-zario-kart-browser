@@ -21,7 +21,17 @@ export const SKY_PATH=makeCourse({
   count:32,radius:190,aspect:0.90,amplitude1:22,amplitude2:20,
   frequency1:4,frequency2:7,phase:1.3,height:7.2
 });
+export const VOLCANO_PATH=makeCourse({
+  count:34,radius:198,aspect:0.86,amplitude1:28,amplitude2:16,
+  frequency1:3,frequency2:5,phase:2.1,height:8.6
+});
+export const MANSION_PATH=makeCourse({
+  count:32,radius:194,aspect:0.92,amplitude1:24,amplitude2:18,
+  frequency1:2,frequency2:6,phase:0.85,height:6.4
+});
 export const EXTRA_TRACKS=Object.freeze({
   3:{id:3,name:'Sunset Canyon',icon:'🌅',desc:'Golden cliffs, flowing S-curves, jump gates and fast chicanes.',points:CANYON_PATH},
-  4:{id:4,name:'Cloudtop Garden',icon:'🌈',desc:'Sky-blue hills, pastel arches, long bends and aerial launches.',points:SKY_PATH}
+  4:{id:4,name:'Cloudtop Garden',icon:'🌈',desc:'Sky-blue hills, pastel arches, long bends and aerial launches.',points:SKY_PATH},
+  5:{id:5,name:'Inferno Volcano',icon:'🌋',desc:'Erupting magma caldera, obsidian spires, glowing lava rivers and high-air stunt ramps.',points:VOLCANO_PATH},
+  6:{id:6,name:'Haunted Mansion',icon:'👻',desc:'Twisted gothic manor grounds, eerie moonlit fog, floating ghosts and haunted courtyard jumps.',points:MANSION_PATH}
 });

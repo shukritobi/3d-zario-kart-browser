@@ -960,6 +960,13 @@ function buildShellMesh(color) {
   g.add(body);
 
   const spikeMat = getToonMaterial(0xffffff, { emissive: 0xffffff, emissiveIntensity: 0.15 });
+  // Creamy white Koopa shell rim collar around the equator (MK8D signature)
+  const rimCollar = new THREE.Mesh(new THREE.TorusGeometry(0.50, 0.085, 10, 24), spikeMat);
+  rimCollar.rotation.x = Math.PI / 2;
+  rimCollar.scale.set(1.06, 1.52, 0.85);
+  rimCollar.position.y = -0.06;
+  g.add(rimCollar);
+
   const spikeGeo = new THREE.ConeGeometry(0.14, 0.40, 8);
   for (let i = 0; i < 3; i++) {
     const spike = new THREE.Mesh(spikeGeo, spikeMat);

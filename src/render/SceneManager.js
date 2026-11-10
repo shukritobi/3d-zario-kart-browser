@@ -21,7 +21,7 @@ export function createScene(container) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, qualityProfile.maxPixelRatio));
   const initialSize = gameSize(container);
   renderer.setSize(initialSize.width, initialSize.height);
-  renderer.userData ||= {};
+  renderer.userData = renderer.userData || {};
   renderer.userData.qualityProfile = qualityProfile;
   window.__sk3dQualityProfile = qualityProfile;
   renderer.userData.capabilityProbe = capabilityProbe;

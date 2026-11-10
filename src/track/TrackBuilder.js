@@ -25,7 +25,7 @@ function getDensityMultipliers() {
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { buildThemeLandmarks } from './ThemeLandmarks.js';
-import { toonMaterial, cartoonOutline, roadTexture, cityRoadTexture, dirtTexture, grassTexture, concreteTexture, checkerTexture, bannerCheckerTexture, finishBannerTexture, finishBannerTextureMirrored, turboPadTexture, turboPadChevronTexture, turboPadGlowTexture, arrowTexture, finishLineTexture, neonReflectionTexture } from '../render/Materials.js';
+import { toonMaterial, cartoonOutline, roadTexture, cityRoadTexture, dirtTexture, grassTexture, concreteTexture, checkerTexture, bannerCheckerTexture, finishBannerTexture, finishBannerTextureMirrored, turboPadTexture, turboPadChevronTexture, turboPadGlowTexture, arrowTexture, finishLineTexture, neonReflectionTexture, volcanoRoadTexture, volcanoAshTexture, mansionRoadTexture, mansionGroundTexture } from '../render/Materials.js';
 
 // Control points forming the closed loop (X, Y=elevation, Z).
 const CONTROL_POINTS = [
@@ -2180,27 +2180,42 @@ export function buildTrack(scene, trackPath = TRACK_PATH, themeId = 1) {
   const startDir = path.getTangentAt(startT).normalize();
 
   const cityMode = trackPath === CITY_PATH;
+  const isVolcano = themeId === 5;
+  const isMansion = themeId === 6;
   const terrain = buildTerrain(path, cityMode);
-  if (themeId===3) terrain.material.color.set(0xe1ba8d);
-  if (themeId===4) terrain.material.color.set(0xc5f1c2);
+  if (themeId === 3) terrain.material.color.set(0xe1ba8d);
+  if (themeId === 4) terrain.material.color.set(0xc5f1c2);
+  if (isVolcano) {
+    terrain.material.map = volcanoAshTexture();
+    terrain.material.color.set(0xd99b82);
+    terrain.material.needsUpdate = true;
+  }
+  if (isMansion) {
+    terrain.material.map = mansionGroundTexture();
+    terrain.material.color.set(0x88b3a8);
+    terrain.material.needsUpdate = true;
+  }
   group.add(terrain);
 
   // Dirt shoulders either side of the asphalt (softens the road→grass edge).
-  // Textured now — was a flat tan ribbon (audit V3).
-  // AUDIT R21z (CAUSA RAIZ FINAL, GPU real): o shoulder TAN (#d9b98c) existia
-  // também no Neon — a faixa de terra em perspectiva + bloom + warm grade =
-  // a "COLINA/FIXA OLIVA" do horizonte (pixels medidos 70,61,2). Na cidade o
-  // shoulder vira concreto escuro (calçada urbana), não terra.
   const shoulder = buildRoadRibbon(path, length, {
     width: getRoadWidthAt() + 3.4,
     yOffset: 0.14,
-    texture: isCity ? concreteTexture : dirtTexture,
+    texture: isCity ? concreteTexture : isVolcano ? volcanoAshTexture : isMansion ? mansionGroundTexture : dirtTexture,
     repeatU: length * 0.04,
     repeatV: 1,
     ...(isCity ? { color: 0x3a3f4d } : {}),
   });
   if (themeId === 3) shoulder.material.color.set(0xe7b98f);
   if (themeId === 4) shoulder.material.color.set(0xd1daf7);
+  if (isVolcano) {
+    shoulder.material.color.set(0xff6b2b);
+    shoulder.material.emissive = new THREE.Color(0xd93800);
+    shoulder.material.emissiveIntensity = 0.28;
+  }
+  if (isMansion) {
+    shoulder.material.color.set(0x4b3f6b);
+  }
   shoulder.receiveShadow = true;
   group.add(shoulder);
 
@@ -2208,15 +2223,19 @@ export function buildTrack(scene, trackPath = TRACK_PATH, themeId = 1) {
   if (isCity) {
     ribbonOpts.texture = cityRoadTexture; // baked neon spill on the asphalt
     ribbonOpts.emissiveMap = true; // the spill patches GLOW (vision 7/10 pass)
-    ribbonOpts.color = 0xffffff; // deixar a textura cityRoadTexture (charcoal #4c5268) ser a cor base — o opts.color sobrescreve o material depois de mat.map ser setado, então 0xffffff preserva o charcoal natural
-    // AUDIT R4: emissive 0xffffff carrega as cores reais do mapa (magenta/ciano/amarelo) sem saturar.
-    // TICK 20:00Z (isolamento GPU V0/V1 streaky, V2/V3 limpo): intensity 0.8
-    // amplificava as micro-streaks/poças do mapa em GLOW multicolorido que em
-    // grazing lia como sujeira; 0.3 mantém o spill legível sem o smear.
+    ribbonOpts.color = 0xffffff;
     ribbonOpts.emissive = 0xffffff;
     ribbonOpts.emissiveIntensity = 0.3;
-    // AUDIT PISTA R11 (2026-08-16): asfalto MOLHADO — clearcoat + sheen
-    // especular contínuo (cue wet-street MK8); sem ele a rua lia matte.
+    ribbonOpts.wet = true;
+  } else if (isVolcano) {
+    ribbonOpts.texture = volcanoRoadTexture;
+    ribbonOpts.emissiveMap = true;
+    ribbonOpts.color = 0xffffff;
+    ribbonOpts.emissive = 0xff621a;
+    ribbonOpts.emissiveIntensity = 0.25;
+  } else if (isMansion) {
+    ribbonOpts.texture = mansionRoadTexture;
+    ribbonOpts.color = 0xffffff;
     ribbonOpts.wet = true;
   }
   const ribbon = buildRoadRibbon(path, length, ribbonOpts);
@@ -2328,24 +2347,42 @@ export function buildTrack(scene, trackPath = TRACK_PATH, themeId = 1) {
   // ~40m across the rail. New ts sit mid-straights (0.13 = top straight,
   // 0.84 = bottom straight) AND every candidate is curvature-checked
   // (skipped unless the local radius is straight enough).
+  // Smart straightaway ramp placement: scans 48 candidate positions around the
+  // circuit, filters out corners and turbo-pad clusters, guarantees an early
+  // straightaway ramp (t in 0.07..0.15) when straight enough, and places up to
+  // 4 Mario Kart trick ramps per track.
   const rampT = [];
-  // Measured in radians PER METRE (previous implementation mistakenly used
-  // radians per fractional lap, often rejecting every otherwise valid ramp).
-  const options = themeId >= 3 ? [0.08,0.21,0.36,0.52,0.68,0.84,0.94]
-                               : [0.12,0.27,0.45,0.61,0.79,0.91];
-  const sorted=options.map(t=>{
-    const da=6/length;
-    const a=path.getTangentAt(Math.max(0.001,t-da));
-    const b=path.getTangentAt(Math.min(0.999,t+da));
-    return {t,curvature:a.angleTo(b)/12};
-  }).sort((a,b)=>a.curvature-b.curvature);
-  for (const candidate of sorted) {
-    if (candidate.curvature>=0.038) continue;
-    const apart=rampT.every(t=>Math.min(Math.abs(t-candidate.t),1-Math.abs(t-candidate.t))>0.14);
-    if (apart) rampT.push(candidate.t);
-    if (rampT.length>=3) break;
+  const turboTs = turbo.ts || CONFIG.track.turboPadTs || [];
+  const rawOptions = [0.09, 0.12, 0.21, 0.27, 0.34, 0.41, 0.50, 0.58, 0.65, 0.78, 0.85, 0.91];
+  for (let k = 1; k <= 36; k++) {
+    const tk = 0.07 + (k / 37) * 0.86;
+    if (!rawOptions.some((x) => Math.abs(x - tk) < 0.015)) rawOptions.push(tk);
   }
-  const ramps = buildRamps(path, length, rampT);
+  const scoredCandidates = rawOptions
+    .map((t) => {
+      const da = Math.min(0.025, 8 / Math.max(200, length));
+      const a = path.getTangentAt(Math.max(0.001, t - da));
+      const b = path.getTangentAt(Math.min(0.999, t + da));
+      const a2d = new THREE.Vector2(a.x, a.z).normalize();
+      const b2d = new THREE.Vector2(b.x, b.z).normalize();
+      const dot2d = Math.min(1, Math.max(-1, a2d.dot(b2d)));
+      const horizCurv = Math.acos(dot2d) / 16;
+      const nearTurbo = turboTs.some((tt) => Math.min(Math.abs(t - tt), 1 - Math.abs(t - tt)) < 0.045);
+      // Slight priority bonus for the opening straightaway (0.07..0.15) so the player sees a ramp early
+      const earlyBonus = t >= 0.075 && t <= 0.145 ? -0.008 : 0;
+      return { t, curvature: horizCurv, nearTurbo, score: horizCurv + earlyBonus };
+    })
+    .filter((c) => !c.nearTurbo && c.curvature < 0.042)
+    .sort((a, b) => a.score - b.score);
+
+  const targetRampCount = themeId >= 5 ? 4 : 3;
+  for (const candidate of scoredCandidates) {
+    const apart = rampT.every((t) => Math.min(Math.abs(t - candidate.t), 1 - Math.abs(t - candidate.t)) > 0.13);
+    if (apart) rampT.push(candidate.t);
+    if (rampT.length >= targetRampCount) break;
+  }
+  rampT.sort((a, b) => a - b);
+  const ramps = buildRamps(path, length, rampT, themeId);
   for (const r of ramps) {
     group.add(r.mesh);
     // chev is parented to r.mesh now (stays flush on the slope) — it must
@@ -2455,74 +2492,100 @@ function buildRampBraceGeometry(rampWidth, rampHeight, rampLen, braceLen, thickn
   return geo;
 }
 
-function buildRamps(path, length, rampTs) {
+function buildRamps(path, length, rampTs, themeId = 1) {
   const ramps = [];
-  // Toon ramp body (audit v4 F1: was the only non-toon surface — read as a
-  // flat orange crate) + painted chevrons on the top face.
-  // AUDIT visual 2026-08-12: ramp read as a flat brown block at night
-  // (toon darkened under low light + chevrons amber-on-orange = no contrast).
-  // Brighter orange + emissive keeps the ramp saturated; white chevrons
-  // (turboPadChevronTexture already draws white on amber) pop against it.
-  const mat = toonMaterial(0xe07b2e, { side: THREE.DoubleSide, emissive: 0xc96f2c, emissiveIntensity: 0.3 });
+  const isVolcano = themeId === 5;
+  const isMansion = themeId === 6;
+  const bodyColor = isVolcano ? 0xff5412 : isMansion ? 0x8b46ff : 0xe07b2e;
+  const bodyEmissive = isVolcano ? 0xd93800 : isMansion ? 0x5c24b8 : 0xc96f2c;
+  const railGlowColor = isVolcano ? 0xffb703 : isMansion ? 0x52ffbc : 0x2ec4ff;
+
+  const mat = toonMaterial(bodyColor, { side: THREE.DoubleSide, emissive: bodyEmissive, emissiveIntensity: 0.34 });
   const chevMat = new THREE.MeshBasicMaterial({ map: turboPadChevronTexture(), transparent: true, depthWrite: false, side: THREE.DoubleSide });
   chevMat.toneMapped = false;
+  const lipGlowMat = new THREE.MeshBasicMaterial({ color: 0xffe14d });
+  lipGlowMat.toneMapped = false;
+  const railLedMat = new THREE.MeshBasicMaterial({ color: railGlowColor });
+  railLedMat.toneMapped = false;
+
   const tan = new THREE.Vector3();
   const p = new THREE.Vector3();
-  // Taller + longer so the ramp reads as a LAUNCH RAMP, not a speed bump
-  // (vision critic: "too low, almost flush with the road"). r.point stays at
-  // the path point (the ramp's top-center) — the KartPhysics <2.7m trigger
-  // and vY=6.5 launch are untouched. The kart rises ~6.5 m/s vs the ramp's
-  // ~0.14*forwardSpeed climb, so it clears the slope without clipping.
   const rampLen = 5.4;
-  const rampHeight = 1.0; // AUDIT visual 2026-08-12: taller slope reads as a ramp (7.9°→10.5°)
-  const rampWidth = CONFIG.track.roadWidth * 0.78;
+  const rampHeight = 1.15; // Crisp ~12° Mario Kart stunt ramp incline
+  const rampWidth = CONFIG.track.roadWidth * 0.84;
   const rampGeo = buildRampGeometry(rampWidth, rampHeight, rampLen);
-  // Side support braces: trapezoid fins under the tall end, flush against the
-  // wedge's side faces (they follow the slope exactly — no poking through).
-  const braceGeo = buildRampBraceGeometry(rampWidth, rampHeight, rampLen, 2.2, 0.1);
+  const braceGeo = buildRampBraceGeometry(rampWidth, rampHeight, rampLen, 2.4, 0.12);
   const braceMat = toonMaterial(0x2b3340, { side: THREE.DoubleSide });
-  // Slope of the top face, for the chevron decal to lie flush on it.
   const slopeAngle = Math.atan2(rampHeight, rampLen);
-  // Ramps on the long straights, placed + curvature-checked by the caller
-  // (buildTrack filters to straight candidates; clear of turbo clusters).
+  const slopeHypot = Math.hypot(rampLen, rampHeight);
+
   for (const t of rampTs || []) {
     path.getPointAt(t, p);
     path.getTangentAt(t, tan);
+    tan.normalize();
     const mesh = new THREE.Mesh(rampGeo, mat);
-    // Base sits flat on the asphalt top (ribbon y+0.18) + 2mm clearance —
-    // NO rotation.x: the wedge already carries the slope, so neither end
-    // sinks into the road nor floats above it.
-    mesh.position.set(p.x, p.y + 0.18 + 0.02, p.z);
+    // Align with both world heading (Y) and longitudinal road grade (X) in YXZ order
+    mesh.rotation.order = 'YXZ';
+    mesh.position.set(p.x, p.y + 0.18 + 0.015, p.z);
     mesh.rotation.y = Math.atan2(tan.x, tan.z);
+    mesh.rotation.x = -Math.asin(THREE.MathUtils.clamp(tan.y, -0.42, 0.42));
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    // Side support braces (one per side, just outside the wedge's side faces).
+
+    // Side support braces + LED neon guide rails along the inclined edges
     for (const sx of [-1, 1]) {
       const brace = new THREE.Mesh(braceGeo, braceMat);
       brace.position.set(sx * (rampWidth / 2 + 0.05), 0, 0);
       brace.castShadow = true;
       mesh.add(brace);
-      // AUDIT R2: dark skirt fin along the wedge side face — the incline
-      // profile reads even from the chase cam (critic: 'bloco laranja plano').
       const skirt = new THREE.Mesh(
-        new THREE.BoxGeometry(0.05, rampHeight, rampLen),
+        new THREE.BoxGeometry(0.06, rampHeight, rampLen),
         braceMat
       );
       skirt.position.set(sx * (rampWidth / 2 + 0.03), rampHeight / 2, 0);
       skirt.castShadow = false;
       mesh.add(skirt);
+
+      // Sloped LED edge rail (MK8D trick ramp signature)
+      const ledRail = new THREE.Mesh(
+        new THREE.BoxGeometry(0.14, 0.08, slopeHypot),
+        railLedMat
+      );
+      ledRail.rotation.x = -slopeAngle;
+      ledRail.position.set(sx * (rampWidth / 2 - 0.06), rampHeight / 2 + 0.03, 0);
+      mesh.add(ledRail);
     }
-    // Chevron decal PARENTED to the ramp: lies flush on the inclined top
-    // face. rotation -PI/2 - slopeAngle makes the plane's normal match the
-    // surface normal (the old +sign tilted it 2*slope off the face — half
-    // buried at the tall end). The Z-spin turns the ">>>" so they point UP
-    // the ramp, along the direction of travel.
-    const chev = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 2.0), chevMat); // AUDIT R2: bigger chevrons read as arrows at speed
-    chev.rotation.set(-Math.PI / 2 - slopeAngle, 0, -Math.PI / 2);
-    chev.position.set(0, rampHeight / 2 + 0.006, 0);
-    chev.renderOrder = 1;
-    mesh.add(chev);
-    ramps.push({ t, point: p.clone(), dir: tan.clone(), mesh, chev, length: rampLen, height: rampHeight });
+
+    // Glowing yellow/gold launch lip bar across the top edge of the ramp
+    const lipBar = new THREE.Mesh(
+      new THREE.BoxGeometry(rampWidth - 0.16, 0.08, 0.24),
+      lipGlowMat
+    );
+    lipBar.rotation.x = -slopeAngle;
+    lipBar.position.set(0, rampHeight + 0.02, rampLen / 2 - 0.12);
+    mesh.add(lipBar);
+
+    // Dual chevron boost lanes on the ramp deck so both left/right lanes read clearly
+    for (const laneX of [-rampWidth * 0.23, rampWidth * 0.23]) {
+      const chev = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 1.85), chevMat);
+      chev.rotation.set(-Math.PI / 2 - slopeAngle, 0, -Math.PI / 2);
+      chev.position.set(laneX, rampHeight / 2 + 0.008, 0);
+      chev.renderOrder = 1;
+      mesh.add(chev);
+    }
+
+    const dir2dLen = Math.hypot(tan.x, tan.z) || 1;
+    const dir2D = new THREE.Vector3(tan.x / dir2dLen, 0, tan.z / dir2dLen);
+    ramps.push({
+      t,
+      point: p.clone(),
+      dir: dir2D,
+      tangent3D: tan.clone(),
+      mesh,
+      length: rampLen,
+      height: rampHeight,
+      width: rampWidth,
+    });
   }
   return ramps;
 }

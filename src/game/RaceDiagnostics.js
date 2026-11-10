@@ -3,6 +3,8 @@
  * No network calls. Stores at most 2400 samples and 600 events, and records
  * once every 200ms rather than allocating heavy objects per physics step.
  */
+import { zarioLogger, LogCategory } from './ZarioLogger.js';
+
 const num = n => Number.isFinite(Number(n)) ? +Number(n).toFixed(3) : null;
 export class RaceDiagnostics {
   constructor({sampleHz = 5, maxSamples = 2400, maxEvents = 600} = {}) {
@@ -17,7 +19,7 @@ export class RaceDiagnostics {
     this.samples = [];
     this.events = [];
     this.counts = {wall:0, contact:0, rescue:0, jump:0, offRoad:0,
-      slowFrame:0, pixelRatio:0, lap:0};
+      slowFrame:0, pixelRatio:0, lap:0, rampLaunch:0, trick:0};
     this._clock = 0;
     this._sinceSample = 0;
     this._prev = null;
@@ -27,16 +29,22 @@ export class RaceDiagnostics {
     this.reset(metadata);
     this.started = true;
     this.event('race-start',{});
+    zarioLogger.info(LogCategory.BOOT, 'RaceDiagnostics recorder started', metadata);
   }
   event(type, fields = {}) {
     if (!this.started) return;
     this.counts[type] = (this.counts[type] || 0) + 1;
-    this.events.push({sec:num(this._clock),type,
-      ...Object.fromEntries(Object.entries(fields).filter(([,v]) =>
-        typeof v === 'string' || typeof v === 'boolean' ||
-        (typeof v === 'number' && Number.isFinite(v))
-      ).map(([k,v])=>[k,typeof v==='number'?num(v):v]))});
+    const cleanFields = Object.fromEntries(Object.entries(fields).filter(([,v]) =>
+      typeof v === 'string' || typeof v === 'boolean' ||
+      (typeof v === 'number' && Number.isFinite(v))
+    ).map(([k,v])=>[k,typeof v==='number'?num(v):v]));
+    this.events.push({sec:num(this._clock),type,...cleanFields});
     if (this.events.length > this.maxEvents) this.events.shift();
+    if (type === 'rampLaunch') {
+      zarioLogger.recordRampLaunch('player', cleanFields);
+    } else if (type === 'trick') {
+      zarioLogger.recordTrick('player', cleanFields);
+    }
   }
   tick({dt, player, frameMs, audioState, pixelRatio, calls} = {}) {
     if (!this.started || !player || !Number.isFinite(dt) || dt <= 0) return;

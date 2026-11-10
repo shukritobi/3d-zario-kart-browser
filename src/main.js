@@ -16,7 +16,7 @@ import { RaceDiagnostics } from './game/RaceDiagnostics.js';
 import { PerformanceGovernor } from './render/PerformanceGovernor.js';
 import { setState, getState, STATES, onStateChange } from './game/GameState.js';
 import { buildTrack, TRACK_PATH, CITY_PATH } from './track/TrackBuilder.js';
-import { CANYON_PATH, SKY_PATH } from './track/ExtraTracks.js';
+import { CANYON_PATH, SKY_PATH, VOLCANO_PATH, MANSION_PATH } from './track/ExtraTracks.js';
 import { Environment } from './track/Environment.js';
 import { PostFX } from './render/PostFX.js';
 import { AudioManager } from './audio/AudioManager.js';
@@ -33,6 +33,18 @@ import { TouchControls } from './ui/TouchControls.js';
 import { ZarioControls } from './input/ZarioControls.js';
 import { signedAngle } from './entities/PowerUp.js'; // steer-assist steering math (shared with AIController)
 import { createBootOverlay } from './ui/BootOverlay.js';
+import { zarioLogger } from './game/ZarioLogger.js';
+import { SwitchHostBridge, initSamsungTVAdaptation, openTVPairingModal } from './input/SwitchBridge.js';
+import { mountControllerApp } from './ui/ControllerApp.js';
+
+const TRACK_NAMES = {
+  1: 'Meadow Circuit',
+  2: 'Neon City',
+  3: 'Sunset Canyon',
+  4: 'Cloudtop Garden',
+  5: 'Inferno Volcano',
+  6: 'Haunted Mansion',
+};
 
 // ---------------------------------------------------------------------------
 // Boot
@@ -57,7 +69,8 @@ let deferredKartDisposals = [];
 let savedTrackId = 0;
 try { savedTrackId = Number(localStorage.getItem('sk3d.track')); } catch { /* private mode */ }
 const urlTrack = Number(new URLSearchParams(location.search).get('track'));
-const TRACK_ID = [1,2,3,4].includes(urlTrack) ? urlTrack : [1,2,3,4].includes(savedTrackId) ? savedTrackId : 1;
+const TRACK_ID = [1,2,3,4,5,6].includes(urlTrack) ? urlTrack : [1,2,3,4,5,6].includes(savedTrackId) ? savedTrackId : 1;
+const IS_CONTROLLER_CLIENT = new URLSearchParams(location.search).get('controller') === '1';
 bootOverlay.setStage('reading controls', 0.10);
 
 // Difficulty/accessibility (audit r3): the CC selector scales the physics
@@ -67,12 +80,20 @@ const BASE_MAX_SPEED = CONFIG.physics.maxSpeed;
 const BASE_BOOST_SPEED = CONFIG.physics.boostSpeed;
 
 const env = new Environment();
-env.trackId = TRACK_ID; // theme hook: 1 = sunny meadow, 2 = neon city
+env.trackId = TRACK_ID; // theme hook: 1 = sunny meadow, 2 = neon city, 5 = volcano, 6 = mansion
 bootOverlay.setStage('laying the circuit', 0.22);
 // Long circuits: place multiple boost clusters throughout each lap.
 CONFIG.track.turboPadTs = [0.13,0.35,0.58,0.82];
-const trackPath = ({1: TRACK_PATH, 2: CITY_PATH, 3: CANYON_PATH, 4: SKY_PATH})[TRACK_ID];
+const trackPath = ({
+  1: TRACK_PATH,
+  2: CITY_PATH,
+  3: CANYON_PATH,
+  4: SKY_PATH,
+  5: VOLCANO_PATH,
+  6: MANSION_PATH,
+})[TRACK_ID];
 const track = buildTrack(scene, trackPath, TRACK_ID);
+zarioLogger.recordTrackLoad(TRACK_ID, TRACK_NAMES[TRACK_ID] || `Track ${TRACK_ID}`, track.ramps?.length || 0);
   // MK8 turbo strips breathe (Feco QA 2026-08-12): additive glow overlay pulse.
   const turboGlowMat = (track.turboPads && track.turboPads.glowMat) || null;
 env.buildEnvironment(scene, track); // track passed so props avoid the road
@@ -117,6 +138,22 @@ function buildSkyEnv(renderer) {
       g.fill();
     }
     g.globalAlpha = 1;
+  } else if (TRACK_ID === 5) {
+    // INFERNO VOLCANO IBL: smoldering obsidian zenith with molten magma horizon reflections
+    grad.addColorStop(0, '#1c0908');
+    grad.addColorStop(0.5, '#5e190e');
+    grad.addColorStop(0.8, '#ff5511');
+    grad.addColorStop(1, '#2a0d08');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 512, 256);
+  } else if (TRACK_ID === 6) {
+    // HAUNTED MANSION IBL: eerie twilight indigo sky with spectral emerald mist reflections
+    grad.addColorStop(0, '#090718');
+    grad.addColorStop(0.55, '#1d163d');
+    grad.addColorStop(0.82, '#3a6b6c');
+    grad.addColorStop(1, '#0e1918');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 512, 256);
   } else {
     // PREMIUM PASS (2026-08-21): IBL casando com o novo domo shader — azul
     // mais profundo no zênite, horizonte quente de sunset. O clearcoat/chrome
@@ -304,6 +341,12 @@ onStateChange((state) => document.body.classList.toggle(
 ));
 window.__zarioControlStatus = () => zarioControls.status();
 window.__zarioPerformance = () => renderer.userData.qualityReport();
+const switchHost = IS_CONTROLLER_CLIENT ? null : new SwitchHostBridge().start();
+window.__zarioSwitchHost = switchHost;
+window.__zarioOpenSwitchModal = () => openTVPairingModal(switchHost);
+if (!IS_CONTROLLER_CLIENT) {
+  initSamsungTVAdaptation(switchHost);
+}
 bootOverlay.setStage('drawing the HUD', 0.82);
 // AUDIT r4: the touch item button only reports presses — wire the release
 // edges here so hold-to-throw-back works on touch too (pointerup/cancel/leave).
@@ -513,6 +556,7 @@ function wireMiniBoost(kart) {
     if (kart.isPlayer) {
       audio.play('driftReleaseMiniBoost', { volume: 0.7 });
       particles.emit('sparkle', kart.group.position, { count: 16, speed: 5, size: 0.3 });
+      hud.showMessage('✨ TRICK BOOST!', 1100);
     }
   };
   kart._onLand = () => {
@@ -689,6 +733,21 @@ function readKeyboardInput() {
     input.brake = pad.brake;
     input.drift = input.drift || pad.drift;
   }
+  const sw = switchHost ? switchHost.sampleFrameInput() : null;
+  if (sw) {
+    if (Math.abs(sw.steer) > 0.02 || input.steer === 0) input.steer = sw.steer;
+    if (sw.throttle > 0) input.throttle = Math.max(input.throttle, sw.throttle);
+    if (sw.brake > 0) input.brake = true;
+    if (sw.drift) input.drift = true;
+    if (sw.swapItem) input.swapItem = true;
+    if (sw.useItem && getState() === STATES.RACE) {
+      pressItem();
+      setTimeout(() => releaseItem(), 45);
+    }
+    if (sw.pause && (getState() === STATES.RACE || getState() === STATES.PAUSED)) {
+      togglePause();
+    }
+  }
 }
 
 function pressItem() {
@@ -774,6 +833,14 @@ window.addEventListener('keydown', (e) => {
   }
   if (e.code === 'KeyP' || e.code === 'Escape') {
     togglePause();
+  }
+  if (e.code === 'F9') {
+    e.preventDefault();
+    zarioLogger.toggleOverlay();
+  }
+  if (e.code === 'KeyT' && getState() === STATES.MENU && switchHost) {
+    e.preventDefault();
+    openTVPairingModal(switchHost);
   }
 });
 window.addEventListener('keyup', (e) => {
@@ -1025,7 +1092,7 @@ function startRaceInit() {
       position: r.position,
       kart: r.kart,
       totalTime: r.kart?.totalTime,
-    })), ({1:'Meadow Circuit',2:'Neon City',3:'Sunset Canyon',4:'Cloudtop Garden'})[TRACK_ID]);
+    })), TRACK_NAMES[TRACK_ID] || 'Meadow Circuit');
     // Celebration burst as the player crosses the line (art-bible: reward juice).
     if (playerKart && playerKart.state) {
       const p = playerKart.state.position.clone();
@@ -1066,7 +1133,15 @@ function startRaceInit() {
   hud.show();
   hud.reset();
   if (isTouchMode()) touch.show();
-  audio.startMusic(TRACK_ID === 2 ? 'Neon Nights' : undefined);
+  const trackMusicMap = {
+    1: 'Turbo Circuit',
+    2: 'Neon Nights',
+    3: 'Rainbow Drift',
+    4: 'Star Sprint',
+    5: 'Magma Caldera',
+    6: 'Phantom Manor',
+  };
+  audio.startMusic(trackMusicMap[TRACK_ID] || 'Turbo Circuit');
   countdownT = 0;
   countdownIndex = -1;
   setState(STATES.COUNTDOWN);
@@ -1337,6 +1412,10 @@ loop.start((dt, t) => {
     const r = 30;
     camera.position.set(Math.cos(menuAngle) * r, 14, Math.sin(menuAngle) * r);
     camera.lookAt(0, 3, 0);
+    const swMenu = switchHost ? switchHost.sampleFrameInput() : null;
+    if (swMenu && swMenu.startRace) {
+      startRace();
+    }
   }
 
   if (state === STATES.COUNTDOWN) {
@@ -1448,6 +1527,7 @@ loop.start((dt, t) => {
       // AI controllers every frame — a second loop here DOUBLED item-use
       // accumulation (effective itemUseChancePerSec 2x) and re-ran steering.
       raceManager.update(dt);
+      audio.setStarMusic?.(!!(playerKart && playerKart.starred));
       raceDiagnostics.tick({
         dt,player:playerKart,frameMs:loop.frameAverageMs,
         audioState:audio.diagnostics().state,
@@ -1474,6 +1554,17 @@ loop.start((dt, t) => {
         k._prevHeldCount = have;
       }
       hud.update(raceManager, playerKart, raceManager.karts);
+      if (switchHost && switchHost.connected && qaFrameN % 10 === 0 && playerKart) {
+        switchHost.broadcastTelemetry({
+          position: playerKart.position || 1,
+          lap: Math.min(CONFIG.game.totalLaps, Math.max(1, (playerKart.lap || 0) + 1)),
+          totalLaps: CONFIG.game.totalLaps,
+          speedKmh: Math.abs(playerKart.state.speed || 0) * 2.4,
+          heldItem: playerKart.heldItem || playerKart.heldItem2 || null,
+          coins: playerKart.state.coins || 0,
+          trackName: TRACK_NAMES[TRACK_ID] || 'Meadow Circuit',
+        });
+      }
       // AUDIT R11: speedo reage ao boost (mushroom, turbo pad, star).
       hud.setBoost?.(!!(playerKart.state.boost || playerKart.state.turboBoostMs > 0));
       // AUDIT imersão R11: auto-hide — 4s sem input no touch esmaece o HUD
@@ -1541,6 +1632,7 @@ loop.start((dt, t) => {
       // keep humming quietly while the music swells (genre standard).
       // AUDIT r11 (#6): single driver — RaceManager.update() updates AIs.
       raceManager.update(dt);
+      audio.setStarMusic?.(!!(playerKart && playerKart.starred));
       hud.update(raceManager, playerKart, raceManager.karts);
     }
     // Continuous engine loops — race AND cruise (pitch follows speed; in
@@ -1736,6 +1828,14 @@ window.__sk3d = {
 
 console.log('[Super Kart 3D.js] booted. Demo mode:', DEMO, '| State:', getState());
 bootOverlay.complete();
+if (IS_CONTROLLER_CLIENT) {
+  loop.stop();
+  menu.hide();
+  hud.hide();
+  if (renderer && renderer.domElement) renderer.domElement.style.display = 'none';
+  mountControllerApp(container);
+  zarioLogger.info('SWITCH_CONTROLLER', 'Mounted iPhone Switch Controller UI (?controller=1)');
+}
 
 // AUDIT (Jarvis QA loop 2026-08-11): runtime errors froze the game with NO
 // visible feedback (the rAF loop dies silently). Surface them on screen so

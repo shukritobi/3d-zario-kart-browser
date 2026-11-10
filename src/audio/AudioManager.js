@@ -227,7 +227,7 @@ export class AudioManager {
     // Music requested before init(): the menu loop owns the title screen,
     // the race playlist owns the race.
     if (this._menuMusicRequested && !this._musicRequested) this.startMenuMusic();
-    if (this._musicRequested) this.startMusic();
+    if (this._musicRequested) this.startMusic(this._requestedTrackName);
 
     this._resume();
     return this._ctx;
@@ -417,13 +417,14 @@ export class AudioManager {
   /** Starts the procedural racing playlist (stops any menu loop first). */
   startMusic(trackName) {
     this._musicRequested = true;
+    if (trackName) this._requestedTrackName = trackName;
     this.stopMenuMusic();
     if (!this._ctx || !this._master) return; // starts on init()
     if (this._music) return;                 // already running
     this._music = new MusicEngine(this._ctx, {
       output: this._master,
       volume: this._musicVolume,
-      track: trackName, // per-track opening song (e.g. 'Neon Nights' on city)
+      track: this._requestedTrackName, // per-track opening song
       onEnded: () => {}, // the engine advances the playlist itself
     });
     this._music.start();
@@ -431,10 +432,9 @@ export class AudioManager {
   }
 
   /**
-   * Starts the calm menu loop — a low-volume variant of track 1
-   * (MusicEngine `menu` mode, intensity 0). Safe before init() (remembered
-   * and started on init()). Stops the race music, so returning to the
-   * title screen after a race actually goes calm.
+   * Starts the upbeat Mario Kart DS-style menu loop (`MusicEngine` `menu` mode).
+   * Safe before init() (remembered and started on init()). Stops the race music
+   * when returning to the title screen.
    */
   startMenuMusic() {
     this._menuMusicRequested = true;
@@ -448,11 +448,11 @@ export class AudioManager {
     }
     this._menuMusic = new MusicEngine(this._ctx, {
       output: this._master,
-      volume: this._musicVolume * 0.55, // calm, low volume
+      volume: this._musicVolume * 0.72,
       menu: true,
       onEnded: () => {},
     });
-    this._menuMusic.setIntensity(0); // calm arrangement
+    this._menuMusic.setIntensity(0.45);
     this._menuMusic.start();
   }
 
@@ -467,11 +467,21 @@ export class AudioManager {
 
   /**
    * Emotional intensity for the race music (0..1): 0.5 is the normal race
-   * arrangement, 0.85 is the final-lap lift (ghost hats, open pads, +BPM).
+   * arrangement, 0.85 is the final-lap lift (+14% BPM, +2 semitone modulation).
    * Safe no-op before the music exists.
    */
   setMusicIntensity(v) {
     if (this._music) this._music.setIntensity(v);
+  }
+
+  /**
+   * Switches race music into the 178 BPM Super Star Invincibility theme
+   * while `active` is true, and restores the track theme when false.
+   */
+  setStarMusic(active) {
+    if (this._music && typeof this._music.setStarMode === 'function') {
+      this._music.setStarMode(active);
+    }
   }
 
   /** Stops the music (fast fade out). */

@@ -25,6 +25,7 @@ import { lateralVelocityStep, playerDriftSteerRate } from './handling.js';
 import { terrainHeight } from '../track/TrackBuilder.js';
 import { advanceLapCheckpoint } from './lapCheckpoints.js';
 import { horizontalDistanceSquared, projectTrackLattice } from './trackProjection.js';
+import { zarioLogger } from '../game/ZarioLogger.js';
 
 const SAMPLES = 384; // long tracks: maintain <=4m nearest-sample spacing // points around the loop for nearest-sample search
 
@@ -513,79 +514,184 @@ export class KartPhysics {
       }
     }
 
-    // ---- height / gravity -----------------------------------------------------
-    // AUDIT FIX (gameplay): the kart used to ride FLAT through the ramp mesh
-    // (groundY came only from path samples) and 'popped' at the trigger —
-    // it sank INTO the ramp visually. Interpolate the wedge height along the
-    // ramp axis so the kart climbs the slope and launches off the top.
+    // ---- height / gravity / Mario Kart Ramp & Jump Physics --------------------
+    // Fixed ramp physics:
+    // 1. Projects onto the normalized 2D ramp axis (dirX, dirZ) so longitudinal
+    //    `along` and `lateral` distances are exact even on hilly track sections.
+    // 2. Supports the full ramp width (`halfW + 0.65m`) instead of the old
+    //    broken `dx*dx + dz*dz < 7.3` circular check that missed outer lanes.
+    // 3. Smoothly climbs the wedge from `-halfL` up to the launch zone
+    //    (`along >= halfL * 0.45`), then triggers a clean upward launch (`vY`)
+    //    with a cooldown so the rising ramp surface does not immediately re-ground
+    //    the kart on the next frame.
     const baseGroundY = near.groundY + kart.rideHeight;
+    kart._rampLaunchCooldown = Math.max(0, (kart._rampLaunchCooldown || 0) - dt);
     let rampLift = 0;
     let onRampNow = false;
-    let readyToLaunch = false;
+    let activeRampSlope = 0;
+    let launchRamp = null;
+    let launchAlong = 0;
+    let launchLateral = 0;
+    let launchIndex = -1;
+
     if (track.ramps && track.ramps.length) {
-      for (const r of track.ramps) {
+      for (let ri = 0; ri < track.ramps.length; ri++) {
+        const r = track.ramps[ri];
         const rdx = s.position.x - r.point.x;
         const rdz = s.position.z - r.point.z;
-        // Project onto the ramp axis (r.dir = travel direction unit vector).
-        const along = rdx * r.dir.x + rdz * r.dir.z;
-        const lateral = Math.abs(rdx * r.dir.z - rdz * r.dir.x);
-        const halfL = (r.length ?? 4.6) / 2;
-        const halfW = (CONFIG.track.roadWidth * 0.78) / 2;
-        if (along > -halfL - 0.5 && along < halfL + 0.5 && lateral < halfW + 0.6) {
+        const dirLen = Math.hypot(r.dir.x, r.dir.z) || 1;
+        const dirX = r.dir.x / dirLen;
+        const dirZ = r.dir.z / dirLen;
+        const along = rdx * dirX + rdz * dirZ;
+        const lateral = Math.abs(rdx * dirZ - rdz * dirX);
+        const rLen = r.length ?? 5.4;
+        const rHeight = r.height ?? 1.15;
+        const halfL = rLen / 2;
+        const halfW = (r.width ?? CONFIG.track.roadWidth * 0.84) / 2;
+
+        if (along >= -halfL - 0.45 && along <= halfL + 0.75 && lateral <= halfW + 0.65) {
           const climb = Math.max(0, Math.min(1, (along + halfL) / (halfL * 2)));
-          rampLift = Math.max(rampLift, (r.height ?? 0.55) * climb);
+          const lift = rHeight * climb;
+          if (lift >= rampLift) {
+            rampLift = lift;
+            activeRampSlope = rHeight / rLen;
+          }
           onRampNow = true;
-          // Launch near the TOP of the wedge (was: any point within a 2.7m
-          // circle of center — the kart 'popped' at the ramp's foot).
-          if (along > halfL * 0.4) readyToLaunch = true;
+          if (!kart._wasOnRamp && kart.isPlayer) {
+            zarioLogger.recordRampClimb('player', {
+              rampIndex: ri,
+              along: Math.round(along * 100) / 100,
+              lateral: Math.round(lateral * 100) / 100,
+              climb: Math.round(climb * 100) / 100,
+              rampLift: Math.round(lift * 100) / 100,
+              speed: Math.round(s.speed * 100) / 100,
+            });
+          }
+          // Trigger launch when reaching the upper half of the ramp while moving forward
+          if (along >= halfL * 0.42 && s.speed > 4.5 && kart._rampLaunchCooldown <= 0) {
+            launchRamp = r;
+            launchAlong = along;
+            launchLateral = lateral;
+            launchIndex = ri;
+          }
         }
       }
     }
-    const groundY = baseGroundY + rampLift;
-    // Trick ramp launch (audit F3: air physics existed but nothing set vY>0).
-    if (track.ramps && track.ramps.length && s.position.y <= groundY + 0.06) {
-      for (const r of track.ramps) {
-        const dx = r.point.x - s.position.x;
-        const dz = r.point.z - s.position.z;
-        // Launch only when actually climbing the top half of the ramp.
-        if (dx * dx + dz * dz < 7.3 && readyToLaunch) {
-          s.vY = 6.5; // launch off the ramp (audit v4: 5.4 gave 0.34s air —
-          // CRITICAL: lift the kart PAST the airborne threshold (groundY+0.06)
-          // in the same frame — a fixed += 0.02/0.08 left it 'grounded' and
-          // the else-branch reset vY to 0, so the launch never fired.
-          s.position.y = groundY + 0.1;
-          s.onRamp = true;
-          break;
+    kart._wasOnRamp = onRampNow;
+
+    // While actively ascending in the first 0.26s after a ramp launch, compare
+    // against baseGroundY so the ramp's front lip never snags the ascending kart.
+    const effectiveGroundY =
+      kart._rampLaunchCooldown > 0.16 && s.vY > 0 ? baseGroundY : baseGroundY + rampLift;
+
+    if (launchRamp && s.position.y <= baseGroundY + rampLift + 0.35) {
+      const rLen = launchRamp.length ?? 5.4;
+      const rHeight = launchRamp.height ?? 1.15;
+      const slopeRatio = rHeight / rLen;
+      const launchVy = Math.max(8.8, Math.min(13.2, Math.abs(s.speed) * slopeRatio + 6.4));
+      s.vY = launchVy;
+      // Lift the kart cleanly to lip height + clearance so it enters the airborne arc
+      s.position.y = Math.max(s.position.y + 0.14, baseGroundY + rHeight + 0.12);
+      s.onRamp = true;
+      s.rampSlope = slopeRatio;
+      kart._rampLaunchCooldown = 0.45;
+      kart._airTime = Math.max(kart._airTime || 0, 0.04);
+      kart._peakAirHeight = rHeight + 0.12;
+      // Mario Kart ramp dash boost on launch
+      const rampBoostMs = 480;
+      kart.applyBoost?.(rampBoostMs);
+      // Auto-arm trick if player is holding drift/hop or throttle on the ramp lip
+      if (input.drift || input.throttle) {
+        kart._trickArmed = true;
+        if (!kart._trickAnimT || kart._trickAnimT <= 0) {
+          kart._trickAnimT = 0.001;
+          kart._trickCount = (kart._trickCount || 0) + 1;
+          kart._trickType = kart._trickCount % 2 === 0 ? 'roll' : 'flip';
+          if (kart.isPlayer) {
+            zarioLogger.recordTrick('player', {
+              phase: 'start',
+              trickType: kart._trickType,
+              speed: Math.round(s.speed * 100) / 100,
+              vY: Math.round(launchVy * 100) / 100,
+            });
+          }
         }
       }
+      kart._onPhysicsEvent?.({
+        type: 'rampLaunch',
+        speed: s.speed,
+        vY: launchVy,
+        along: launchAlong,
+        lateral: launchLateral,
+        boostMs: rampBoostMs,
+        rampIndex: launchIndex,
+      });
+      if (kart.isPlayer && !kart._onPhysicsEvent) {
+        zarioLogger.recordRampLaunch('player', {
+          speed: s.speed,
+          vY: launchVy,
+          along: launchAlong,
+          lateral: launchLateral,
+          boostMs: rampBoostMs,
+          rampIndex: launchIndex,
+        });
+      }
+    } else if (onRampNow && kart._rampLaunchCooldown <= 0) {
+      s.onRamp = true;
+      s.rampSlope = activeRampSlope;
+      // Keep momentum climbing the ramp slope
+      if (input.throttle && s.speed > 0 && s.speed < P.maxSpeed * 0.92) {
+        s.speed = Math.min(P.maxSpeed, s.speed + P.acceleration * 0.45 * dt);
+      }
     }
-    if (s.position.y > groundY + 0.06) {
-      // airborne
+
+    if (s.position.y > effectiveGroundY + 0.05 || (kart._rampLaunchCooldown > 0.2 && s.vY > 0)) {
+      // Airborne trajectory
       s.vY += P.gravity * dt;
       s.position.y += s.vY * dt;
-      kart._airTime += dt;
-      if (s.position.y <= groundY) {
-        s.position.y = groundY;
+      kart._airTime = (kart._airTime || 0) + dt;
+      const heightAboveRoad = s.position.y - baseGroundY;
+      if (heightAboveRoad > (kart._peakAirHeight || 0)) {
+        kart._peakAirHeight = heightAboveRoad;
+      }
+      if (s.position.y <= effectiveGroundY && s.vY <= 0) {
+        s.position.y = effectiveGroundY;
         s.vY = 0;
-        if (kart._airTime > 0.05) {
-          kart._scaleTarget = 0.92; // landing squash
-          kart._scaleMs = Math.max(kart._scaleMs, 240);
-          kart._onLand?.(); // landing thump hook (audit UX-F3 — touchdown was silent)
+        const landedAirTime = kart._airTime;
+        const peakH = kart._peakAirHeight || 0;
+        if (landedAirTime > 0.05) {
+          kart._scaleTarget = 0.91; // landing squash
+          kart._scaleMs = Math.max(kart._scaleMs, 260);
+          kart._onLand?.(); // landing thump hook
+          if (kart.isPlayer) {
+            zarioLogger.recordAirLanding('player', {
+              airTime: landedAirTime,
+              peakHeight: peakH,
+              trickBoost: !!kart._trickArmed,
+            });
+          }
         }
         kart._airTime = 0;
+        kart._peakAirHeight = 0;
+        s.onRamp = false;
+        s.rampSlope = 0;
       }
     } else {
-      s.position.y = groundY;
+      s.position.y = effectiveGroundY;
       s.vY = 0;
       kart._airTime = 0;
-      s.onRamp = false;
+      kart._peakAirHeight = 0;
+      if (!onRampNow) {
+        s.onRamp = false;
+        s.rampSlope = 0;
+      }
       // squash rolling off a fast drop
-      if (groundY < kart._prevY - 0.16) {
+      if (effectiveGroundY < kart._prevY - 0.16) {
         kart._scaleTarget = 0.94;
         kart._scaleMs = Math.max(kart._scaleMs, 240);
       }
     }
-    kart._prevY = groundY;
+    kart._prevY = effectiveGroundY;
 
     // ---- squash & stretch -------------------------------------------------------
     if (kart._scaleMs > 0) kart._scaleMs -= dt * 1000;

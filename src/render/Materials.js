@@ -182,7 +182,7 @@ export function cartoonOutline(mesh, color = 0x1b2a41, thickness = 0.045) {
  * opts: { repeat, wrap } — repeat = [x, y] tile counts.
  */
 export function canvasTexture(size, drawFn, opts = {}) {
-  const cap = Number(window.__sk3dQualityProfile?.textureCap) || size;
+  const cap = (typeof window !== 'undefined' && Number(window.__sk3dQualityProfile?.textureCap)) || size;
   const resolvedSize = Math.max(64, Math.min(size, cap));
   const canvas = document.createElement('canvas');
   canvas.width = resolvedSize;
@@ -1026,4 +1026,152 @@ export function turboPadGlowTexture() {
   _turboPadGlowTex = tex;
   return _turboPadGlowTex;
 }
+
+// ---------------------------------------------------------------------------
+// Track 5 (Inferno Volcano) & Track 6 (Haunted Mansion) custom textures
+// ---------------------------------------------------------------------------
+
+let _volcanoRoadTex = null;
+/** Track 5 (Inferno Volcano): dark charred basalt asphalt with glowing magma fissures. */
+export function volcanoRoadTexture() {
+  if (_volcanoRoadTex) return _volcanoRoadTex;
+  _volcanoRoadTex = canvasTexture(
+    256,
+    (ctx, s) => {
+      ctx.fillStyle = '#2d2427';
+      ctx.fillRect(0, 0, s, s);
+      // Basalt stone grain
+      for (let i = 0; i < 1600; i++) {
+        ctx.fillStyle = i % 2 === 0 ? '#3a2e32' : '#211a1c';
+        ctx.fillRect(Math.random() * s, Math.random() * s, 2, 2);
+      }
+      // Subtle scorched tire tracks
+      ctx.globalAlpha = 0.22;
+      ctx.fillStyle = '#181214';
+      for (const wy of [s * 0.28, s * 0.72]) {
+        for (let x = 0; x < s; x += 12) {
+          ctx.fillRect(x, wy + (Math.random() - 0.5) * 4, 8, 5);
+        }
+      }
+      // Glowing molten lava cracks near the edges and across basalt plates
+      ctx.globalAlpha = 0.85;
+      for (let i = 0; i < 18; i++) {
+        const x = Math.random() * s;
+        const y = Math.random() * s;
+        const len = 14 + Math.random() * 28;
+        const a = (Math.random() - 0.5) * 1.2;
+        ctx.strokeStyle = i % 3 === 0 ? '#ffb703' : '#ff5412';
+        ctx.lineWidth = i % 3 === 0 ? 1.5 : 2.2;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + Math.cos(a) * len * 0.5, y + Math.sin(a) * len * 0.5);
+        ctx.lineTo(x + Math.cos(a + 0.45) * len, y + Math.sin(a + 0.45) * len);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    },
+    { repeat: [24, 24] }
+  );
+  return _volcanoRoadTex;
+}
+
+let _volcanoAshTex = null;
+/** Track 5 (Inferno Volcano): volcanic ash & obsidian ground with glowing magma pools. */
+export function volcanoAshTexture() {
+  if (_volcanoAshTex) return _volcanoAshTex;
+  _volcanoAshTex = canvasTexture(
+    256,
+    (ctx, s) => {
+      ctx.fillStyle = '#241a1d';
+      ctx.fillRect(0, 0, s, s);
+      for (let i = 0; i < 1800; i++) {
+        ctx.fillStyle = Math.random() > 0.5 ? '#312327' : '#181113';
+        ctx.fillRect(Math.random() * s, Math.random() * s, 2, 2);
+      }
+      // Glowing magma veins / ember patches in the ash field
+      for (let i = 0; i < 12; i++) {
+        const x = Math.random() * s;
+        const y = Math.random() * s;
+        const r = 8 + Math.random() * 18;
+        const g = ctx.createRadialGradient(x, y, 1, x, y, r);
+        g.addColorStop(0, 'rgba(255, 140, 24, 0.55)');
+        g.addColorStop(0.5, 'rgba(217, 56, 0, 0.25)');
+        g.addColorStop(1, 'rgba(40, 20, 20, 0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    },
+    { repeat: [45, 45] }
+  );
+  return _volcanoAshTex;
+}
+
+let _mansionRoadTex = null;
+/** Track 6 (Haunted Mansion): gothic cobblestone manor road with mossy seams. */
+export function mansionRoadTexture() {
+  if (_mansionRoadTex) return _mansionRoadTex;
+  _mansionRoadTex = canvasTexture(
+    256,
+    (ctx, s) => {
+      ctx.fillStyle = '#38314a';
+      ctx.fillRect(0, 0, s, s);
+      // Cobblestone courses
+      const rows = 8;
+      const cols = 8;
+      const rh = s / rows;
+      const cw = s / cols;
+      ctx.lineWidth = 2;
+      for (let r = 0; r < rows; r++) {
+        const offset = (r % 2) * (cw * 0.5);
+        for (let c = -1; c <= cols; c++) {
+          const x = c * cw + offset;
+          const y = r * rh;
+          ctx.fillStyle = (r + c) % 2 === 0 ? '#433b58' : '#322b44';
+          ctx.fillRect(x + 2, y + 2, cw - 4, rh - 4);
+          ctx.strokeStyle = '#1e192b';
+          ctx.strokeRect(x + 1, y + 1, cw - 2, rh - 2);
+        }
+      }
+      // Eerie mossy / spectral glow flecks in mortar seams
+      ctx.globalAlpha = 0.28;
+      for (let i = 0; i < 45; i++) {
+        ctx.fillStyle = i % 2 === 0 ? '#4fd1a5' : '#8b5cf6';
+        ctx.fillRect(Math.random() * s, Math.random() * s, 3, 2);
+      }
+      ctx.globalAlpha = 1;
+    },
+    { repeat: [28, 28] }
+  );
+  return _mansionRoadTex;
+}
+
+let _mansionGroundTex = null;
+/** Track 6 (Haunted Mansion): eerie dark moss & midnight manor grounds. */
+export function mansionGroundTexture() {
+  if (_mansionGroundTex) return _mansionGroundTex;
+  _mansionGroundTex = canvasTexture(
+    256,
+    (ctx, s) => {
+      ctx.fillStyle = '#1e2c29';
+      ctx.fillRect(0, 0, s, s);
+      for (let i = 0; i < 2000; i++) {
+        ctx.fillStyle = Math.random() > 0.5 ? '#263834' : '#16211f';
+        ctx.fillRect(Math.random() * s, Math.random() * s, 2, 2);
+      }
+      ctx.globalAlpha = 0.22;
+      for (let i = 0; i < 14; i++) {
+        ctx.fillStyle = i % 2 === 0 ? '#312547' : '#24423a';
+        ctx.beginPath();
+        ctx.arc(Math.random() * s, Math.random() * s, 12 + Math.random() * 20, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    },
+    { repeat: [45, 45] }
+  );
+  return _mansionGroundTex;
+}
+
 

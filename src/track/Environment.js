@@ -519,26 +519,48 @@ export class Environment {
     const night = this.trackId === 2;
     const sunset = this.trackId === 3;
     const skyGarden = this.trackId === 4;
+    const volcano = this.trackId === 5;
+    const mansion = this.trackId === 6;
     // Same drawing cost for each theme. Palette and atmosphere create a
     // different sense of place without photoreal textures on mobile GPUs.
-    const fogColor = night ? 0x141034 : sunset ? 0xffd6b7 : skyGarden ? 0xd9edff : 0xbfe6ff;
-    scene.fog = new THREE.Fog(fogColor, night ? 140 : 85, night ? 750 : 750);
+    const fogColor = night
+      ? 0x141034
+      : sunset
+        ? 0xffd6b7
+        : skyGarden
+          ? 0xd9edff
+          : volcano
+            ? 0x3b1712
+            : mansion
+              ? 0x1b1530
+              : 0xbfe6ff;
+    scene.fog = new THREE.Fog(fogColor, night || mansion ? 120 : 85, 750);
 
-    // Sky dome — PREMIUM PASS (2026-08-21): ShaderMaterial procedural (cookbook
-    // gradient-sky recipe) substitui a textura canvas. Gradiente contínuo sem
-    // banding, sol/lua com disc+halo físicos (pow), estrelas hash na noite,
-    // horizonte quente de sunset casando com o fog. 1 draw call, zero texturas.
-    // keyPos/sunDir definidos aqui (ANTES das luzes) — o sol do domo usa a
-    // MESMA direção da key light: o que se vê no céu é de onde a luz vem.
-    const keyPos = night ? [90, 115, -72] : [70, 90, 40];
+    const keyPos = night || mansion ? [90, 115, -72] : [70, 90, 40];
     this.sunDir = new THREE.Vector3(...keyPos).normalize();
     const skyUniforms = {
-      uTop:      { value: new THREE.Color(night ? 0x241a4e : sunset ? 0xf38d74 : skyGarden ? 0x549cfa : 0x2e8fd8) },
-      uMid:      { value: new THREE.Color(night ? 0x2a2a5a : sunset ? 0xffbc8b : skyGarden ? 0x9ad7ff : 0x7cc3f0) },
-      uHorizon:  { value: new THREE.Color(night ? 0x141034 : sunset ? 0xffe0b6 : skyGarden ? 0xe3f4ff : 0xd8f0fc) }, // AUDIT R21: horizonte noturno azul-roxo profundo — o tom anterior (0x251a3a) + fog amarelado das luzes lia como banda OLIVA no horizonte central
-      uSunColor: { value: new THREE.Color(night ? 0xe8ecf8 : sunset ? 0xffeead : 0xfff2cc) },
-      uSunDir:   { value: this.sunDir.clone() },
-      uNight:    { value: night ? 1 : 0 },
+      uTop: {
+        value: new THREE.Color(
+          night ? 0x241a4e : sunset ? 0xf38d74 : skyGarden ? 0x549cfa : volcano ? 0x1a0b0e : mansion ? 0x0e0b1c : 0x2e8fd8
+        ),
+      },
+      uMid: {
+        value: new THREE.Color(
+          night ? 0x2a2a5a : sunset ? 0xffbc8b : skyGarden ? 0x9ad7ff : volcano ? 0x5c1d14 : mansion ? 0x261d47 : 0x7cc3f0
+        ),
+      },
+      uHorizon: {
+        value: new THREE.Color(
+          night ? 0x141034 : sunset ? 0xffe0b6 : skyGarden ? 0xe3f4ff : volcano ? 0xb53c16 : mansion ? 0x243b3e : 0xd8f0fc
+        ),
+      },
+      uSunColor: {
+        value: new THREE.Color(
+          night ? 0xe8ecf8 : sunset ? 0xffeead : volcano ? 0xff8c24 : mansion ? 0xd8f8e8 : 0xfff2cc
+        ),
+      },
+      uSunDir: { value: this.sunDir.clone() },
+      uNight: { value: night || mansion ? 1 : 0 },
     };
     const sky = new THREE.Mesh(
       // AUDIT FIX: 24 segments faceted the horizon (~135m chords at 520m
@@ -621,7 +643,17 @@ export class Environment {
     // (kept for the night-city headlight rig wiring, not emitted).
     // PREMIUM PASS: keyPos/sunDir agora definidos no bloco do céu (o shader
     // do domo usa a MESMA direção — sol visível = direção da key light).
-    const keyColor = night ? 0x8fa8ff : sunset ? 0xffcb93 : skyGarden ? 0xf4f9ff : 0xfff2d0;
+    const keyColor = night
+      ? 0x8fa8ff
+      : sunset
+        ? 0xffcb93
+        : skyGarden
+          ? 0xf4f9ff
+          : volcano
+            ? 0xff9e5e
+            : mansion
+              ? 0xb8d8ff
+              : 0xfff2d0;
     const key = new THREE.DirectionalLight(keyColor, 0);
     key.position.copy(this.sunDir).multiplyScalar(150);
     scene.add(key);
@@ -898,14 +930,40 @@ export class Environment {
     // MeshBasicMaterial (backdrop-safe) with vertexColors for the 3 value
     // layers and DoubleSide so jitter-inverted windings never rasterize
     // black. Deterministic local rnd() — this._rand is never touched.
-    const bands = [
-      { radius: 318, count: 14, rock: 0x93a7cf, dark: 0x5f739e, snow: 0xbdc9ea, baseH: 40, seed: 11, offset: 0.6, haze: 0.35, snowLift: 0.22 }, // farthest — TICK32: da chase-cam baixa só o topo passa do horizonte; neve azulada (glacial distante) + snowline alta p/ não ler slab branco
-      { radius: 262, count: 13, rock: 0x93a5e0, dark: 0x51619c, snow: 0xc6d4ea, baseH: 34, seed: 27, offset: 0.2, haze: 0.24, snowLift: 0.14 }, // AUDIT r20: 0.42 washed the snow patches out — 0.3 keeps the ridge contrast; TICK32: 0.3→0.24 p/ separar da banda far; neve azulada (slabs brancos persistem nesta banda)
-      { radius: 202, count: 12, rock: 0x5d70c4, dark: 0x36428c, snow: 0xd2dff0, baseH: 28, seed: 43, offset: 0.2, haze: 0.16, snowLift: 0.1 }, // AUDIT r20: 0.28 → 0.18; TICK32: 0.18→0.16 + neve azulada + snowLift (banda intocada era dona dos slabs restantes)
-      { radius: 146, count: 10, rock: 0x39468e, dark: 0x1c2658, snow: 0xffffff, baseH: 24, seed: 61, offset: 0.2, haze: 0.12 },  // closest — deepest + brightest
-    ];
+    const isVolcano = this.trackId === 5;
+    const isMansion = this.trackId === 6;
+    const bands = isVolcano
+      ? [
+          { radius: 318, count: 14, rock: 0x3b2124, dark: 0x1a0d0f, snow: 0xff6d14, baseH: 46, seed: 11, offset: 0.6, haze: 0.28, snowLift: 0.25 },
+          { radius: 262, count: 13, rock: 0x321b1e, dark: 0x160b0d, snow: 0xff8c24, baseH: 38, seed: 27, offset: 0.2, haze: 0.20, snowLift: 0.18 },
+          { radius: 202, count: 12, rock: 0x2b1719, dark: 0x12090a, snow: 0xffa62b, baseH: 32, seed: 43, offset: 0.2, haze: 0.14, snowLift: 0.12 },
+          { radius: 146, count: 10, rock: 0x241214, dark: 0x0f0708, snow: 0xffb703, baseH: 26, seed: 61, offset: 0.2, haze: 0.10 },
+        ]
+      : isMansion
+        ? [
+            { radius: 318, count: 14, rock: 0x2c2442, dark: 0x151024, snow: 0x56cfe1, baseH: 42, seed: 11, offset: 0.6, haze: 0.30, snowLift: 0.24 },
+            { radius: 262, count: 13, rock: 0x261f3b, dark: 0x120e1f, snow: 0x64dfdf, baseH: 36, seed: 27, offset: 0.2, haze: 0.22, snowLift: 0.16 },
+            { radius: 202, count: 12, rock: 0x211a33, dark: 0x0f0b1a, snow: 0x72efdd, baseH: 30, seed: 43, offset: 0.2, haze: 0.15, snowLift: 0.12 },
+            { radius: 146, count: 10, rock: 0x1b152b, dark: 0x0c0914, snow: 0x80ffdb, baseH: 25, seed: 61, offset: 0.2, haze: 0.10 },
+          ]
+        : [
+            { radius: 318, count: 14, rock: 0x93a7cf, dark: 0x5f739e, snow: 0xbdc9ea, baseH: 40, seed: 11, offset: 0.6, haze: 0.35, snowLift: 0.22 }, // farthest — TICK32: da chase-cam baixa só o topo passa do horizonte; neve azulada (glacial distante) + snowline alta p/ não ler slab branco
+            { radius: 262, count: 13, rock: 0x93a5e0, dark: 0x51619c, snow: 0xc6d4ea, baseH: 34, seed: 27, offset: 0.2, haze: 0.24, snowLift: 0.14 }, // AUDIT r20: 0.42 washed the snow patches out — 0.3 keeps the ridge contrast; TICK32: 0.3→0.24 p/ separar da banda far; neve azulada (slabs brancos persistem nesta banda)
+            { radius: 202, count: 12, rock: 0x5d70c4, dark: 0x36428c, snow: 0xd2dff0, baseH: 28, seed: 43, offset: 0.2, haze: 0.16, snowLift: 0.1 }, // AUDIT r20: 0.28 → 0.18; TICK32: 0.18→0.16 + neve azulada + snowLift (banda intocada era dona dos slabs restantes)
+            { radius: 146, count: 10, rock: 0x39468e, dark: 0x1c2658, snow: 0xffffff, baseH: 24, seed: 61, offset: 0.2, haze: 0.12 },  // closest — deepest + brightest
+          ];
     // Day fog color = the atmospheric haze target (scene.fog is 0xbfe6ff).
-    const fogCol = new THREE.Color(this.trackId === 3 ? 0xffd6b7 : this.trackId === 4 ? 0xd9edff : 0xbfe6ff);
+    const fogCol = new THREE.Color(
+      this.trackId === 3
+        ? 0xffd6b7
+        : this.trackId === 4
+          ? 0xd9edff
+          : isVolcano
+            ? 0x3b1712
+            : isMansion
+              ? 0x1b1530
+              : 0xbfe6ff
+    );
     // The old 146/202/262m mountain rings physically crossed a 1.3km
     // circuit. The closest band now starts OUTSIDE the entire road envelope,
     // even after random radius scaling and rock base width.
@@ -1169,31 +1227,27 @@ export class Environment {
   }
 
   buildWater(scene) {
+    const isVolcano = this.trackId === 5;
+    const isMansion = this.trackId === 6;
+    const waterColor = isVolcano ? 0xff5412 : isMansion ? 0x246b5c : 0x2f9fd8;
+    const waterEmissive = isVolcano ? 0xff7b00 : isMansion ? 0x1b8a72 : 0x1e9bd6;
     const make = (x, z, w, d, a) => {
-      // Reflective lake surface — MeshStandardMaterial with high metalness /
-      // low roughness so the sunny-sky env map (scene.environment) + the sun
-      // glow actually REFLECT off the water (vision critic: 'water is a flat
-      // cyan sheet'). The animated shimmer in update() keeps working: it
-      // drives opacity, hue-hold brightness and emissive pulse on the same
-      // material.
       const water = new THREE.Mesh(
-        // AUDIT PERF-R43: 20×20→1×1 segmentos (441 vértices → 4) — superfície
-        // PLANA, shader faz o look; o update anima material, não geometria.
         new THREE.PlaneGeometry(w, d, 1, 1),
         new THREE.MeshStandardMaterial({
-          color: 0x2f9fd8,
-          metalness: 0.85,
-          roughness: 0.18,
+          color: waterColor,
+          metalness: isVolcano ? 0.25 : 0.85,
+          roughness: isVolcano ? 0.35 : 0.18,
           envMapIntensity: 1.1,
           transparent: true,
-          opacity: 0.82,
-          emissive: 0x1e9bd6,
-          emissiveIntensity: 0.35,
+          opacity: isVolcano ? 0.94 : 0.82,
+          emissive: waterEmissive,
+          emissiveIntensity: isVolcano ? 0.72 : 0.35,
         })
       );
       water.rotation.x = -Math.PI / 2;
       water.position.set(x, -0.2 + Math.sin(a) * 0.1, z);
-      water.userData = { baseY: water.position.y, phase: a, baseColor: 0x2f9fd8 };
+      water.userData = { baseY: water.position.y, phase: a, baseColor: waterColor };
       scene.add(water);
       this.waterMeshes.push(water);
 

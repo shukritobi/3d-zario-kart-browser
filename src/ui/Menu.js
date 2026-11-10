@@ -21,20 +21,22 @@
  */
 import { CONFIG } from '../config.js';
 import { TRACK_PATH, CITY_PATH } from '../track/TrackBuilder.js';
-import { CANYON_PATH, SKY_PATH } from '../track/ExtraTracks.js';
+import { CANYON_PATH, SKY_PATH, VOLCANO_PATH, MANSION_PATH } from '../track/ExtraTracks.js';
 import './ui.css';
 
 /** [action, keyboard, touch] rows for the "How to Play" table. */
 const CONTROL_ROWS = [
-  ['Steer', '← → or A / D', '◀ ▶ buttons'],
-  ['Accelerate', '↑ or W', 'Auto'],
-  ['Brake / Reverse', '↓ or S', '—'],
-  ['Drift', 'Shift (hold)', '🧲 DRIFT button'],
-  ['Use item', 'Space', '🎁 button'],
+  ['Steer', '← → or A / D', '◀ ▶ or iPhone Tilt'],
+  ['Accelerate', '↑ or W', 'Auto / A button'],
+  ['Brake / Reverse', '↓ or S', 'B button'],
+  ['Drift / Ramp Trick', 'Shift (hold)', '🧲 DRIFT / ZR button'],
+  ['Use item', 'Space', '🎁 / X / ZL button'],
   ['Throw item back', 'Hold Space, release', 'Hold 🎁, release'],
-  ['Swap item', 'Tab', 'Tap 🎁 reserve slot'],
+  ['Swap item', 'Tab', 'Tap 🎁 reserve / Y'],
+  ['Samsung TV + iPhone', 'T key', '📺 TV Switch Mode'],
+  ['Telemetry & Logs', 'F9 key', '📋 Logs button'],
   ['Restart', 'R', '—'],
-  ['Pause', 'P / Esc', '⏸ button'],
+  ['Pause', 'P / Esc', '⏸ / + button'],
 ];
 
 /** 0xff5a5f -> "#ff5a5f" */
@@ -47,10 +49,12 @@ function toHex(value) {
  * are the control-point loops exported by TrackBuilder (do NOT edit it).
  */
 const TRACKS = [
-  { id: 1, name: 'Meadow Circuit', icon: '🌇', desc: 'Rolling sunny hills, sweeping bends and two launch ramps.', points: TRACK_PATH },
+  { id: 1, name: 'Meadow Circuit', icon: '🌇', desc: 'Rolling sunny hills, sweeping bends and launch ramps.', points: TRACK_PATH },
   { id: 2, name: 'Neon City', icon: '🌆', desc: 'Long night race across wet neon boulevards and sharp switchbacks.', points: CITY_PATH },
   { id: 3, name: 'Sunset Canyon', icon: '🌅', desc: 'Golden cliffs, S-bends, aerial jumps and festival arches.', points: CANYON_PATH },
   { id: 4, name: 'Cloudtop Garden', icon: '🌈', desc: 'Pastel sky gardens, swooping curves and colorful launch gates.', points: SKY_PATH },
+  { id: 5, name: 'Inferno Volcano', icon: '🌋', desc: 'Basalt caldera road, erupting magma rivers, obsidian spires and trick jumps.', points: VOLCANO_PATH },
+  { id: 6, name: 'Haunted Mansion', icon: '👻', desc: 'Moonlit gothic manor, spectral swamp mist, floating ghosts and cobblestone hairpins.', points: MANSION_PATH },
 ];
 
 /**
@@ -294,8 +298,8 @@ export class Menu {
     this.muted = false;
     this.selectedColor = CONFIG.kart.playerColors[0];
     this.selectedChar = 0; // driver index into CONFIG.kart.characters
-    // Track id matches the ?track= query param (2 = Neon City).
-    this.trackId = [1,2,3,4].includes(Number(new URLSearchParams(location.search).get('track'))) ? Number(new URLSearchParams(location.search).get('track')) : 1;
+    // Track id matches the ?track= query param (1..6).
+    this.trackId = [1,2,3,4,5,6].includes(Number(new URLSearchParams(location.search).get('track'))) ? Number(new URLSearchParams(location.search).get('track')) : 1;
     // Difficulty/accessibility state (audit r3): restored from localStorage.
     this.cc = CONFIG.cc.default;
     this.autoAccel = CONFIG.assist.autoAccelerate;
@@ -319,6 +323,8 @@ export class Menu {
     // Selection-screen refs.
     this.racersBtn = this.root.querySelector('.sk3d-racers-btn');
     this.tracksBtn = this.root.querySelector('.sk3d-tracks-btn');
+    this.switchModeBtn = this.root.querySelector('.sk3d-switch-btn');
+    this.logsBtn = this.root.querySelector('.sk3d-logs-btn');
     this.pickLine = this.root.querySelector('.sk3d-current-pick');
     this.screenRacers = this.root.querySelector('.sk3d-screen-racers');
     this.screenTracks = this.root.querySelector('.sk3d-screen-tracks');
@@ -465,7 +471,11 @@ export class Menu {
         </div>
         <div class="sk3d-menu-actions" role="group" aria-label="Choose racer or track">
           <button type="button" class="sk3d-btn sk3d-action-btn sk3d-racers-btn">🏎️ RACERS</button>
-          <button type="button" class="sk3d-btn sk3d-action-btn sk3d-tracks-btn">🗺️ TRACKS</button>
+          <button type="button" class="sk3d-btn sk3d-action-btn sk3d-tracks-btn">🗺️ TRACKS (6)</button>
+        </div>
+        <div class="sk3d-menu-actions sk3d-menu-actions-sub" role="group" aria-label="Samsung TV Switch Mode and Telemetry">
+          <button type="button" class="sk3d-btn sk3d-action-btn sk3d-switch-btn" title="Play on 45-inch Samsung Smart TV using iPhone as wireless controller">📺 TV + iPhone</button>
+          <button type="button" class="sk3d-btn sk3d-action-btn sk3d-logs-btn" title="View detailed race, ramp, model & TV telemetry logs (F9)">📋 Logs</button>
         </div>
         <div class="sk3d-current-pick" aria-live="polite"></div>
         <div class="sk3d-settings" role="group" aria-label="Race settings">
@@ -537,6 +547,14 @@ export class Menu {
     // Compact main-menu buttons open the full-screen selection screens.
     this.racersBtn.addEventListener('click', () => { this.onSound('uiSelect'); this.openScreen(this.screenRacers); });
     this.tracksBtn.addEventListener('click', () => { this.onSound('uiSelect'); this.openScreen(this.screenTracks); });
+    this.switchModeBtn?.addEventListener('click', () => {
+      this.onSound('uiSelect');
+      window.__zarioOpenSwitchModal?.();
+    });
+    this.logsBtn?.addEventListener('click', () => {
+      this.onSound('uiClick');
+      window.__zarioLogger?.toggleOverlay?.();
+    });
     for (const b of this.backBtns) {
       b.addEventListener('click', () => { this.onSound('uiClick'); this.closeScreens(); });
     }
@@ -676,7 +694,7 @@ export class Menu {
       if (localStorage.getItem('sk3d.autoAccel') === '1') this.autoAccel = true;
       if (localStorage.getItem('sk3d.steerAssist') === '1') this.steerAssist = true;
       const savedTrack = Number(localStorage.getItem('sk3d.track'));
-      if ([1,2,3,4].includes(savedTrack)) this.trackId = savedTrack;
+      if ([1,2,3,4,5,6].includes(savedTrack)) this.trackId = savedTrack;
     } catch { /* private mode */ }
     for (const b of this.ccBtns) {
       const sel = Number(b.dataset.cc) === this.cc;

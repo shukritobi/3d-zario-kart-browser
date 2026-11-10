@@ -17,6 +17,8 @@ import * as Materials from '../render/Materials.js';
 import { getToonMaterial, getPlasticMaterial, getCartoonOutlineMaterial } from '../render/MaterialLibrary.js';
 import { PowerUpType } from './PowerUp.js';
 import { KartPhysics } from './KartPhysics.js';
+import { zarioLogger } from '../game/ZarioLogger.js';
+import { tryAttachCustomKartModel } from '../render/ModelLoader.js';
 
 const OUTLINE = 0x1b2a41;
 
@@ -112,6 +114,7 @@ export class Kart {
     this.startPosition = startPosition ? startPosition.clone() : new THREE.Vector3();
     this.startHeading = startHeading;
     this.group = new THREE.Group();
+    this.group.rotation.order = 'YXZ'; // Y=yaw(heading), X=local pitch(ramp/jump), Z=local roll(bank/barrel-roll)
     this.group.name = isPlayer ? 'kart-player' : 'kart-ai';
 
     this.rideHeight = CONFIG.kart.wheelRadius + 0.04;
@@ -192,33 +195,109 @@ export class Kart {
     this.heldItemGroup.position.set(0, 0.72, -0.72);
     this._itemRear = false; // AUDIT r4: rear-aim armed (bubble flipped across the kart)
     this._heldMeshes = {};
-    // mushroom: red cap + white stem
+    // Sculpted 3D Super Mushroom: domed cap + 5 white polka-dot spots + contoured stem
     const mush = new THREE.Group();
-    mush.add(new THREE.Mesh(new THREE.SphereGeometry(0.11, 14, 10), this._mat(0xff5a5f)));
-    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.06, 0.1, 8), this._mat(0xf4f6f8));
-    stem.position.y = -0.1;
+    const capMat = this._mat(0xff3b3f);
+    const spotMat = this._mat(0xffffff);
+    const stemMat = this._mat(0xfbe8d3);
+    const capMesh = new THREE.Mesh(new THREE.SphereGeometry(0.125, 16, 12), capMat);
+    capMesh.scale.set(1.12, 0.86, 1.12);
+    capMesh.position.y = 0.03;
+    mush.add(capMesh);
+    for (let si = 0; si < 4; si++) {
+      const ang = (si / 4) * Math.PI * 2;
+      const spot = new THREE.Mesh(new THREE.SphereGeometry(0.038, 10, 8), spotMat);
+      spot.position.set(Math.cos(ang) * 0.095, 0.045, Math.sin(ang) * 0.095);
+      spot.scale.set(1, 0.85, 0.5);
+      spot.lookAt(Math.cos(ang) * 0.3, 0.06, Math.sin(ang) * 0.3);
+      mush.add(spot);
+    }
+    const topSpot = new THREE.Mesh(new THREE.SphereGeometry(0.036, 10, 8), spotMat);
+    topSpot.position.set(0, 0.125, 0);
+    topSpot.scale.set(1, 0.45, 1);
+    mush.add(topSpot);
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.068, 0.11, 12), stemMat);
+    stem.position.y = -0.075;
     mush.add(stem);
-    mush.scale.setScalar(0.95);
+    mush.scale.setScalar(0.98);
     this._heldMeshes.mushroom = mush;
-    // shell family: squashed sphere, tinted per type
-    const mkShell = (c) => {
-      const s = new THREE.Mesh(new THREE.SphereGeometry(0.13, 14, 10), this._mat(c));
-      s.scale.set(0.75, 1, 1.15);
-      return s;
+
+    // Sculpted Koopa Shell family: carapace dome + creamy white rim collar + spikes on blue spiny shell
+    const mkShell = (c, isBlue = false) => {
+      const sg = new THREE.Group();
+      const s = new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 12), this._mat(c));
+      s.scale.set(0.88, 0.78, 1.15);
+      sg.add(s);
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(0.115, 0.024, 8, 18), spotMat);
+      rim.rotation.x = Math.PI / 2;
+      rim.scale.set(0.9, 1.15, 0.8);
+      rim.position.y = -0.015;
+      sg.add(rim);
+      if (isBlue) {
+        const spkGeo = new THREE.ConeGeometry(0.032, 0.085, 6);
+        for (const sx of [-0.05, 0, 0.05]) {
+          const spk = new THREE.Mesh(spkGeo, spotMat);
+          spk.position.set(sx, 0.11, sx === 0 ? 0.02 : -0.02);
+          sg.add(spk);
+        }
+      }
+      return sg;
     };
-    this._heldMeshes.shell = mkShell(0x43d64b);
-    this._heldMeshes.red_shell = mkShell(0xff3b3b);
-    this._heldMeshes.blue_shell = mkShell(0x1f3fc8);
-    // banana: tilted yellow cylinder
+    this._heldMeshes.shell = mkShell(0x43d64b, false);
+    this._heldMeshes.red_shell = mkShell(0xff3b3b, false);
+    this._heldMeshes.blue_shell = mkShell(0x1f3fc8, true);
+
+    // Sculpted Crescent Banana: curved torus arc with brown stem tip
     const ban = new THREE.Group();
-    const b1 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.055, 0.24, 10), this._mat(0xffd166));
-    b1.rotation.z = 0.45;
-    ban.add(b1);
+    const bArc = new THREE.Mesh(
+      new THREE.TorusGeometry(0.12, 0.042, 10, 16, Math.PI * 0.95),
+      this._mat(0xffd166)
+    );
+    bArc.rotation.z = -Math.PI * 0.25;
+    bArc.position.set(-0.04, 0, 0);
+    ban.add(bArc);
     this._heldMeshes.banana = ban;
-    // star: flattened gold octahedron
-    const star = new THREE.Mesh(new THREE.OctahedronGeometry(0.12, 0), this._mat(0xffd700));
-    star.scale.set(1, 0.7, 1);
+
+    // Sculpted 5-Pointed Super Star (ExtrudeGeometry)
+    const starShape = new THREE.Shape();
+    for (let i = 0; i < 10; i++) {
+      const rad = i % 2 === 0 ? 0.145 : 0.065;
+      const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
+      const x = Math.cos(a) * rad;
+      const y = Math.sin(a) * rad;
+      if (i === 0) starShape.moveTo(x, y);
+      else starShape.lineTo(x, y);
+    }
+    starShape.closePath();
+    const starGeo = new THREE.ExtrudeGeometry(starShape, {
+      depth: 0.055,
+      bevelEnabled: true,
+      bevelThickness: 0.018,
+      bevelSize: 0.015,
+      bevelSegments: 2,
+    });
+    starGeo.center();
+    const star = new THREE.Mesh(starGeo, this._mat(0xffd700));
     this._heldMeshes.star = star;
+
+    // Sculpted 3D Lightning Bolt (ExtrudeGeometry)
+    const boltShape = new THREE.Shape();
+    boltShape.moveTo(0.02, 0.15);
+    boltShape.lineTo(-0.08, 0.01);
+    boltShape.lineTo(-0.01, 0.01);
+    boltShape.lineTo(-0.05, -0.15);
+    boltShape.lineTo(0.08, -0.01);
+    boltShape.lineTo(0.01, -0.01);
+    boltShape.closePath();
+    const boltGeo = new THREE.ExtrudeGeometry(boltShape, {
+      depth: 0.04,
+      bevelEnabled: true,
+      bevelThickness: 0.01,
+      bevelSize: 0.008,
+      bevelSegments: 2,
+    });
+    boltGeo.center();
+    this._heldMeshes.lightning = new THREE.Mesh(boltGeo, this._mat(0xffe14d));
     // lightning / anything else: colored orb fallback
     this._heldOrb = new THREE.Mesh(new THREE.SphereGeometry(0.17, 16, 12), new THREE.MeshBasicMaterial({ color: 0xffffff }));
     this._heldOrbMat = this._heldOrb.material;
@@ -1549,7 +1628,121 @@ export class Kart {
     // this.pilotFill.position.set(0, 1.9, 1.2);
     // this.group.add(this.pilotFill);
 
+    this._buildCharacterHeadgear(drv, character, accentMat, white);
     this._applyBodyClass(character);
+    tryAttachCustomKartModel(this);
+    zarioLogger.metrics.modelsBuilt.karts += 1;
+    zarioLogger.metrics.modelsBuilt.drivers += 1;
+  }
+
+  /**
+   * Sculpted character-specific 3D headgear & silhouette features so each
+   * racer reads as a unique Mario Kart character from the chase camera rather
+   * than an identical sphere helmet:
+   * - Turbo (Zario/Mario hero): Sculpted racing cap brim + twin dorsal aero fins
+   * - Daisy (Princess): Sculpted golden royal crown with 4 crown peaks + jewel
+   * - Comet (Cosmic): Swept-back valkyrie star-wings flanking the helmet
+   * - King (Bowser/Heavy): Curved ivory horns + 3 dorsal dragon spikes
+   * - Bolt (Dino/Speedster): 3 rounded dorsal crest fins down the helmet spine
+   * - Pip (Toad/Mushroom): Sculpted mushroom-cap dome with white polka-dot spots
+   */
+  _buildCharacterHeadgear(drv, character, accentMat, whiteMat) {
+    if (!drv) return;
+    const name = (character && character.name) || 'Turbo';
+    const headgear = new THREE.Group();
+    headgear.name = 'character-headgear';
+    headgear.position.set(0, 1.30, 0.06); // helmet center
+
+    if (name === 'King') {
+      // Curved ivory horns on both sides + dorsal spikes
+      const hornMat = this._mat(0xfff4d6);
+      const spikeMat = this._mat(0xff9f45);
+      for (const sx of [-1, 1]) {
+        const hornCurve = new THREE.CatmullRomCurve3([
+          new THREE.Vector3(sx * 0.13, 0.05, 0.0),
+          new THREE.Vector3(sx * 0.23, 0.14, -0.02),
+          new THREE.Vector3(sx * 0.20, 0.25, 0.05),
+        ]);
+        const horn = new THREE.Mesh(new THREE.TubeGeometry(hornCurve, 8, 0.032, 6, false), hornMat);
+        headgear.add(horn);
+      }
+      for (let i = 0; i < 3; i++) {
+        const spk = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.09, 6), spikeMat);
+        spk.position.set(0, 0.16 - i * 0.04, -0.04 - i * 0.065);
+        spk.rotation.x = -0.55 - i * 0.25;
+        headgear.add(spk);
+      }
+    } else if (name === 'Daisy') {
+      // Royal golden crown with 4 points and emerald/ruby jewels
+      const goldMat = this._mat(0xffd700);
+      const gemMat = this._mat(0x2ec4ff);
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.075, 0.055, 12), goldMat);
+      band.position.set(0, 0.175, 0.0);
+      headgear.add(band);
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2;
+        const pt = new THREE.Mesh(new THREE.ConeGeometry(0.026, 0.065, 5), goldMat);
+        pt.position.set(Math.cos(a) * 0.068, 0.22, Math.sin(a) * 0.068);
+        headgear.add(pt);
+      }
+      const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.024, 0), gemMat);
+      gem.position.set(0, 0.18, 0.082);
+      headgear.add(gem);
+    } else if (name === 'Comet') {
+      // Swept-back cosmic valkyrie winglet fins on both sides
+      for (const sx of [-1, 1]) {
+        const wingShape = new THREE.Shape();
+        wingShape.moveTo(0, 0);
+        wingShape.lineTo(0.16, 0.08);
+        wingShape.lineTo(0.11, -0.04);
+        wingShape.closePath();
+        const wGeo = new THREE.ExtrudeGeometry(wingShape, { depth: 0.018, bevelEnabled: false });
+        const wMesh = new THREE.Mesh(wGeo, accentMat);
+        wMesh.position.set(sx * 0.155, 0.04, 0.02);
+        wMesh.rotation.y = sx * -1.25;
+        headgear.add(wMesh);
+      }
+    } else if (name === 'Bolt') {
+      // 3 rounded dino crest fins along the helmet spine
+      const crestMat = this._mat(0xff5a5f);
+      for (let i = 0; i < 3; i++) {
+        const fin = new THREE.Mesh(new THREE.SphereGeometry(0.045 - i * 0.006, 10, 8), crestMat);
+        fin.scale.set(0.45, 1.15, 1.1);
+        fin.position.set(0, 0.165 - i * 0.045, 0.02 - i * 0.075);
+        headgear.add(fin);
+      }
+    } else if (name === 'Pip') {
+      // Sculpted Toad-style oversized mushroom helmet cap with spots
+      const cap = new THREE.Mesh(new THREE.SphereGeometry(0.205, 18, 12), whiteMat);
+      cap.scale.set(1.08, 0.78, 1.08);
+      cap.position.set(0, 0.06, -0.01);
+      headgear.add(cap);
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2 + 0.4;
+        const spot = new THREE.Mesh(new THREE.SphereGeometry(0.052, 10, 8), accentMat);
+        spot.position.set(Math.cos(a) * 0.165, 0.075, Math.sin(a) * 0.165 - 0.01);
+        spot.scale.set(1, 0.85, 0.45);
+        spot.lookAt(Math.cos(a) * 0.4, 0.09, Math.sin(a) * 0.4);
+        headgear.add(spot);
+      }
+    } else {
+      // Turbo (Hero): sculpted forward racing visor brim + twin dorsal aero strakes
+      const brim = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.145, 0.145, 0.018, 16, 1, false, -Math.PI * 0.38, Math.PI * 0.76),
+        accentMat
+      );
+      brim.position.set(0, 0.065, 0.075);
+      brim.rotation.x = 0.22;
+      headgear.add(brim);
+      for (const sx of [-0.055, 0.055]) {
+        const strake = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.045, 0.14), accentMat);
+        strake.position.set(sx, 0.155, -0.04);
+        strake.rotation.x = -0.25;
+        headgear.add(strake);
+      }
+    }
+    this._headgearGroup = headgear;
+    drv.add(headgear);
   }
 
   /**
@@ -1878,6 +2071,7 @@ export class Kart {
   /** Drift mini-boost, mushroom, star, etc. */
   applyBoost(durationMs) {
     this._boostMs = Math.max(this._boostMs, durationMs);
+    this.state.boost = this._boostMs > 0;
     this._scaleTarget = 1.06; // stretch
     this._scaleMs = Math.max(this._scaleMs, 420);
   }
@@ -2097,15 +2291,34 @@ export class Kart {
         this.heldItem2Group.rotation.y += dt * 2.4; // gentle spin
       }
     }
-    // Trick (MK8 pillar): pressing throttle mid-air arms a trick; landing
-    // with it armed grants a mini-boost (the air system is now reachable
-    // via the trick ramps).
-    if (this._airTime > 0.25 && this._controls.throttle) this._trickArmed = true; // audit v4: 0.35 was above the ramp's airtime
-    if (this._trickArmed && this._airTime <= 0.02 && !this.state.spinOut) {
-      this._trickArmed = false;
-      this.applyBoost(320);
-      this._onTrick?.();
+    // Trick / Jump Boost (MK8D pillar): pressing drift/hop or throttle on a ramp
+    // or mid-air arms a trick (360° flip or barrel roll) and grants an 850ms
+    // Trick Boost upon landing.
+    if (this._airTime > 0.08 && (this._controls.throttle || this._controls.drift) && !this._trickArmed) {
+      this._trickArmed = true;
+      this._trickAnimT = 0.001;
+      this._trickCount = (this._trickCount || 0) + 1;
+      this._trickType = this._trickCount % 2 === 0 ? 'roll' : 'flip';
+      if (ctx.particles) {
+        this._localToWorld(this._pv, 0, 0.85, 0);
+        ctx.particles.emit('combo', this._pv, { count: 14, speed: 5.2, size: 0.24 });
+      }
+      if (this.isPlayer) {
+        zarioLogger.recordTrick('player', {
+          phase: 'start',
+          trickType: this._trickType,
+          airTime: Math.round(this._airTime * 100) / 100,
+        });
+      }
     }
+    if (this._trickAnimT && this._trickAnimT > 0) {
+      this._trickAnimT += dt / 0.46;
+      if (this._trickAnimT >= 1 || this._airTime <= 0.01) {
+        this._trickAnimT = 0;
+      }
+    }
+    const prevAirTimeForTrick = this._airTime || 0;
+    const prevPeakForTrick = this._peakAirHeight || 0;
 
     if (ctx.track) {
       if (ctx.track.startLine && ctx.track.startLine.direction) {
@@ -2118,6 +2331,27 @@ export class Kart {
         Math.min(1, (this.isPlayer && this._gripMode !== 'classic' ? 14 : 9) * dt)
       );
       KartPhysics.step(this, this._controls, dt, ctx.track, ctx.raceManager);
+    }
+
+    if (this._trickArmed && this._airTime <= 0.02 && !this.state.spinOut) {
+      this._trickArmed = false;
+      this._trickAnimT = 0;
+      this.applyBoost(850); // Full Mario Kart Trick Landing Boost!
+      this._lastTrickAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      this._onTrick?.();
+      if (ctx.particles) {
+        this._localToWorld(this._pv, 0, 0.65, -0.5);
+        ctx.particles.emit('sparkle', this._pv, { count: 18, speed: 6.5, size: 0.24 });
+        ctx.particles.emit('boost', this._pv, { count: 14, speed: 7.5, size: 0.28 });
+      }
+      if (this.isPlayer) {
+        zarioLogger.recordTrick('player', {
+          phase: 'land',
+          boostMs: 850,
+          airTime: Math.round(prevAirTimeForTrick * 100) / 100,
+          peakHeight: Math.round(prevPeakForTrick * 100) / 100,
+        });
+      }
     }
     // AUDIT: event juice — landing puff (MK8 dust at contact), boost release
     // sparkle (rising edge), high-speed wind streaks.
@@ -2181,16 +2415,24 @@ export class Kart {
     this.group.position.copy(s.position);
     this.group.rotation.y = s.heading;
 
-    // lean into turns, nose-up on accel
+    // lean into turns, nose-up on accel, ramp slope climb, airborne arc, and 360° trick flips!
     const speed01 = Math.min(1, Math.abs(s.speed) / CONFIG.physics.maxSpeed);
     const steerVis = this._controls.steer * speed01;
     // AUDIT: MK8D banking — 0.09 rad (~5°) read as 'no suspension movement';
     // raise to ~8° lean + stronger drift tilt so cornering reads on the body.
-    const rollTarget = -steerVis * 0.14 - (s.drifting ? this._controls.steer * 0.06 : 0);
-    this.group.rotation.z = THREE.MathUtils.lerp(this.group.rotation.z, rollTarget, Math.min(1, 6 * dt));
+    let rollTarget = -steerVis * 0.14 - (s.drifting ? this._controls.steer * 0.06 : 0);
     let pitchTarget = s.spinOut ? 0 : (this._controls.throttle ? 0.05 : (this._controls.brake ? -0.04 : 0));
+
+    if (s.onRamp && (!this._airTime || this._airTime < 0.05)) {
+      // Pitch nose up to match the ramp wedge slope while climbing
+      pitchTarget -= Math.atan(s.rampSlope || 0.21);
+    } else if (this._airTime > 0.03) {
+      // Smoothly pitch nose up during ascent and nose down during descent
+      pitchTarget -= THREE.MathUtils.clamp((s.vY || 0) * 0.026, -0.24, 0.30);
+    }
+
     // AUDIT r7: finished-kart celebration — a quick wheelie hop (nose up,
-    // negative rotation.x per the three.js XYZ Euler convention) while
+    // negative rotation.x per the three.js YXZ Euler convention) while
     // _finishMs runs, then the checkered flag keeps waving up top.
     if (this._finishMs > 0) {
       const ft = 1 - this._finishMs / KART_FINISH_MS; // 0 → 1 over the celebration
@@ -2199,6 +2441,26 @@ export class Kart {
       pitchTarget -= 0.26 * rise * settle + Math.sin(this._t * 9) * 0.02 * settle; // nose up + tiny wobble
       this.group.position.y += Math.sin(rise * Math.PI) * 0.14; // visual hop (physics re-syncs next frame)
     }
+
+    if (this._trickAnimT && this._trickAnimT > 0) {
+      const u = Math.min(1, this._trickAnimT);
+      const ease = u * u * (3 - 2 * u);
+      if (this._trickType === 'roll') {
+        this.group.rotation.z = rollTarget + ease * Math.PI * 2;
+        this.group.rotation.x = THREE.MathUtils.lerp(this.group.rotation.x, pitchTarget, Math.min(1, 10 * dt));
+      } else {
+        this.group.rotation.z = THREE.MathUtils.lerp(this.group.rotation.z, rollTarget, Math.min(1, 6 * dt));
+        this.group.rotation.x = pitchTarget - ease * Math.PI * 2;
+      }
+    } else {
+      this.group.rotation.z = THREE.MathUtils.lerp(this.group.rotation.z, rollTarget, Math.min(1, 6 * dt));
+      this.group.rotation.x = THREE.MathUtils.lerp(
+        this.group.rotation.x,
+        pitchTarget,
+        Math.min(1, (s.onRamp || this._airTime > 0.03 ? 12 : 5) * dt)
+      );
+    }
+
     // AUDIT: contact shadow stays ON THE ROAD — it used to ride inside the
     // kart group (jump = kart carried its shadow = 'floating' read). Local Y
     // cancels the kart's world height; opacity + size fade with altitude.
@@ -2218,7 +2480,6 @@ export class Kart {
         if (this._flagCloth) this._flagCloth.rotation.z = Math.sin(this._t * 7) * 0.22; // cloth wave
       }
     }
-    this.group.rotation.x = THREE.MathUtils.lerp(this.group.rotation.x, pitchTarget, Math.min(1, 5 * dt));
 
     this._animateWheels(dt);
     if (ctx.particles) this._emitParticles(ctx.particles, dt);

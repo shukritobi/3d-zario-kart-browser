@@ -1,42 +1,27 @@
 // ============================================================
-// Super Kart 3D.js — music.js
-// Procedural racing playlist (lo-fi hype, zero audio assets):
-// pads with a slow wobble, pentatonic chimes, sine bass, punchy
-// kick/snare/hat groove and a vinyl texture with crackles — all
-// synthesized live with the WebAudio API.
+// Super Kart 3D.js — music.js (Mario Kart DS Edition)
+// High-energy procedural arcade soundtrack inspired by Mario Kart DS
+// (Shinobu Tanaka / Nintendo DS SSEQ soundfont aesthetic):
+//   - Bright DS Brass & Jazz-Fusion Synth leads with pitch-scoop attack & vibrato
+//   - Syncopated 7th/9th brass & electric-piano chord stabs
+//   - Funky octave-jumping slap/FM synth basslines
+//   - Sparkling 16th-note chip-bell counter-arpeggios
+//   - Driving arcade drum grooves with 4-bar snare/tom fills & crash cymbals
+//   - Final Lap Hyper-Lift (+14% BPM speedup + +2 semitone key modulation!)
+//   - Super Star Invincibility Eurobeat/Disco mode (setStarMode(true))
 //
 // Contract (ARCHITECTURE.md):
-//   new MusicEngine(ctx, { volume, onEnded, menu, intensity })
-//   start(), stop(), next(), setVolume(v), setIntensity(0..1)
+//   new MusicEngine(ctx, { volume, onEnded, menu, intensity, track })
+//   start(), stop(), next(), setVolume(v), setIntensity(0..1), setStarMode(bool)
 //   static renderOffline(ctx, out, trackName, seed, cycles)
 //   static trackNames(), static trackDuration(name, cycles)
-//
-// Emotional arc (audit r3): setIntensity(0..1) reshapes the arrangement
-// live — 0 is the calm/menu color (pad+bass pulled back), ≥0.7 adds a
-// ghost-hat 16th layer, opens the pad filter (+60% cutoff) and nudges BPM
-// (+4% at max). Values ramp ~0.4s in the scheduler, so the final-lap lift
-// swells instead of snapping. `menu: true` plays a single calm loop
-// (MENU_TRACK, cycles=Infinity) instead of the shuffled race playlist.
-//
-// Scheduler: setInterval(tick, 100) with a 0.35s lookahead;
-// 16th-note steps, swing on odd steps. Tracks loop their chord
-// progression `cycles` times, then the playlist advances.
-//
-// Pitfalls baked in (validated in the match-3djs project):
-//   - stop() sets a `_stopping` guard so the _finishTrack timeout
-//     cannot restart the music.
-//   - The bus gain starts at 0 and fades in on play; renderOffline
-//     sets bus.gain.value = 1 explicitly (no fade-in runs there).
-//   - All randomized synthesis uses a seeded RNG so offline renders
-//     are byte-for-byte reproducible for a given seed.
 // ============================================================
 
 const midiHz = (m) => 440 * Math.pow(2, (m - 69) / 12);
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
 // ------------------------------------------------------------
-// Chord voicings (MIDI notes) — closed voicings in a comfortable
-// lo-fi register (C3-B4).
+// Chord voicings (MIDI notes) — bright jazz-fusion / arcade voicings
 // ------------------------------------------------------------
 const CHORDS = {
   Cmaj7:  [48, 52, 55, 59],
@@ -48,14 +33,15 @@ const CHORDS = {
   A7:     [45, 49, 52, 55],
   Em7:    [52, 55, 59, 62],
   Gmaj7:  [43, 47, 50, 54],
-  D7:     [50, 53, 57, 60],
+  D7:     [50, 54, 57, 60],
   C7:     [48, 52, 55, 58],
   E7:     [52, 56, 59, 62],
+  B7:     [47, 51, 54, 57],
   Dmaj7:  [50, 54, 57, 61],
   Gadd9:  [43, 47, 50, 54, 57],
 };
 
-// Pentatonic pools per key (for the chime melody).
+// Pentatonic & scale pools per key (for counter-chimes & sparkles)
 const PENTA = {
   C:  [60, 62, 64, 67, 69, 72, 74, 76],
   Dm: [50, 53, 55, 57, 60, 62, 65, 67],
@@ -66,170 +52,313 @@ const PENTA = {
 };
 
 // ------------------------------------------------------------
-// Playlist — 3 tracks: different BPM, progression and groove.
-// Each: chords (MIDI voicings), 16-step drum/bass patterns,
-// timbre knobs and lo-fi vinyl texture.
+// Mario Kart DS-Style Race Playlist (6 Track Themes)
+// Each track includes:
+//   - leadPattern: 32-step (2-bar) composed melodic hook (MIDI note or 0 for rest/tie)
+//   - leadGate: note duration in 16th steps when triggered
+//   - stabPattern: 16-step syncopated brass/chord stab rhythm
+//   - bassWalk: 16-step semitone offsets relative to chord root (-12) for walking/octave bass
 // ------------------------------------------------------------
 const TRACKS = [
   {
+    // Track 1: Meadow Circuit — MKDS Figure-8 Circuit / Delfino Square vibe
     name: 'Turbo Circuit',
     key: 'C',
-    bpm: 124,
+    bpm: 160,
     chords: ['Cmaj7', 'Am7', 'Fmaj7', 'G7'],
     barsPerChord: 1,
     cycles: 8,
-    padType: 'triangle',
-    padFilter: 1300,
+    leadInstrument: 'brass',
+    padType: 'sawtooth',
+    padFilter: 1900,
     padWobble: 0.35,
-    padGain: 0.9,
-    chimeVol: 0.13,
-    chimeDensity: 0.5,
-    bassVol: 0.26,
-    drumVol: 0.2,
-    kickPattern: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0],
-    snarePattern: [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
-    hatPattern: [0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1],
-    bassPattern: [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0],
+    padGain: 0.95,
+    chimeVol: 0.16,
+    chimeDensity: 0.75,
+    bassVol: 0.34,
+    drumVol: 0.27,
+    kickPattern:  [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1],
+    snarePattern: [0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0],
+    hatPattern:   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    bassPattern:  [1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0],
+    bassWalk:     [0, 0, 12, 0, 7, 0, 12, 7, 0, 0, 12, 0, 5, 7, 12, 0],
+    stabPattern:  [1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0],
+    leadPattern: [
+      // Bar 1: Bright heroic Mario Kart brass fanfare
+      72, 0, 76, 0, 79, 0, 81, 79, 0, 76, 72, 0, 74, 0, 76, 0,
+      // Bar 2: Syncopated call-and-response climb to high C6/D6
+      77, 0, 81, 0, 84, 0, 83, 81, 0, 79, 81, 0, 83, 0, 84, 0,
+    ],
+    leadGate:     [
+      2, 0, 2, 0, 2, 0, 1, 2, 0, 1, 2, 0, 2, 0, 2, 0,
+      2, 0, 2, 0, 2, 0, 1, 2, 0, 1, 2, 0, 2, 0, 2, 0,
+    ],
   },
   {
+    // Track 3: Canyon Rush — MKDS Desert Hills / Yoshi Falls upbeat brass & marimba adventure
     name: 'Rainbow Drift',
-    key: 'Dm',
-    bpm: 138,
-    chords: ['Dm7', 'Bbmaj7', 'Fmaj7', 'A7'],
-    barsPerChord: 2,
-    cycles: 4,
-    padType: 'sawtooth',
-    padFilter: 850,
-    padWobble: 0.55,
-    padGain: 1.0,
-    chimeVol: 0.11,
-    chimeDensity: 0.4,
-    bassVol: 0.28,
-    drumVol: 0.22,
-    kickPattern: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0],
-    snarePattern: [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
-    hatPattern: [0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1],
-    bassPattern: [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0],
-  },
-  {
-    name: 'Star Sprint',
-    key: 'Am',
-    bpm: 150,
-    chords: ['Am7', 'Fmaj7', 'Cmaj7', 'G7'],
-    barsPerChord: 2,
-    cycles: 4,
-    padType: 'sawtooth',
-    padFilter: 1500,
-    padWobble: 0.3,
-    padGain: 1.1,
-    chimeVol: 0.14,
-    chimeDensity: 0.55,
-    bassVol: 0.26,
-    drumVol: 0.24,
-    kickPattern: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0],
-    snarePattern: [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
-    hatPattern: [1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1],
-    bassPattern: [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0],
-  },
-  {
-    name: 'Neon Nights',
-    key: 'Dm',
-    bpm: 142,
-    chords: ['Dm7', 'Bbmaj7', 'Fmaj7', 'E7'],
+    key: 'G',
+    bpm: 164,
+    chords: ['Gmaj7', 'Em7', 'Cmaj7', 'D7'],
     barsPerChord: 1,
     cycles: 8,
+    leadInstrument: 'brass',
     padType: 'sawtooth',
-    padFilter: 700,
-    padWobble: 0.6,
+    padFilter: 1750,
+    padWobble: 0.45,
     padGain: 1.0,
-    chimeVol: 0.12,
-    chimeDensity: 0.45,
-    bassVol: 0.3,
-    drumVol: 0.24,
-    kickPattern: [1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0],
-    snarePattern: [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
-    hatPattern: [1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1],
-    bassPattern: [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0],
+    chimeVol: 0.17,
+    chimeDensity: 0.8,
+    bassVol: 0.34,
+    drumVol: 0.27,
+    kickPattern:  [1, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 0],
+    snarePattern: [0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1],
+    hatPattern:   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    bassPattern:  [1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0],
+    bassWalk:     [0, 0, 7, 12, 0, 0, 12, 0, 0, 0, 7, 12, 10, 0, 7, 0],
+    stabPattern:  [1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0],
+    leadPattern: [
+      79, 0, 83, 86, 0, 83, 81, 79, 0, 76, 79, 0, 81, 0, 83, 0,
+      84, 0, 83, 81, 0, 79, 81, 83, 0, 86, 84, 0, 81, 0, 79, 0,
+    ],
+    leadGate: [
+      2, 0, 1, 2, 0, 1, 1, 2, 0, 1, 2, 0, 2, 0, 2, 0,
+      2, 0, 1, 2, 0, 1, 1, 2, 0, 1, 2, 0, 2, 0, 2, 0,
+    ],
+  },
+  {
+    // Track 4: Alpine Frost — MKDS DK Pass / Peach Gardens sparkling snow rally
+    name: 'Star Sprint',
+    key: 'Am',
+    bpm: 162,
+    chords: ['Am7', 'Fmaj7', 'Cmaj7', 'G7'],
+    barsPerChord: 1,
+    cycles: 8,
+    leadInstrument: 'whistle',
+    padType: 'sawtooth',
+    padFilter: 2100,
+    padWobble: 0.3,
+    padGain: 1.05,
+    chimeVol: 0.19,
+    chimeDensity: 0.85,
+    bassVol: 0.33,
+    drumVol: 0.28,
+    kickPattern:  [1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0],
+    snarePattern: [0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1],
+    hatPattern:   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    bassPattern:  [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1],
+    bassWalk:     [0, 0, 12, 0, 0, 0, 12, 0, 0, 0, 12, 0, 7, 0, 12, 7],
+    stabPattern:  [1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0],
+    leadPattern: [
+      76, 0, 81, 83, 84, 0, 83, 81, 79, 0, 76, 0, 79, 0, 81, 0,
+      77, 0, 81, 84, 88, 0, 86, 84, 83, 0, 79, 0, 83, 0, 86, 0,
+    ],
+    leadGate: [
+      2, 0, 1, 1, 2, 0, 1, 1, 2, 0, 2, 0, 2, 0, 2, 0,
+      2, 0, 1, 1, 2, 0, 1, 1, 2, 0, 2, 0, 2, 0, 2, 0,
+    ],
+  },
+  {
+    // Track 2: Harbor Dusk — MKDS Waluigi Pinball / Rainbow Road electro-arcade hype
+    name: 'Neon Nights',
+    key: 'Dm',
+    bpm: 168,
+    chords: ['Dm7', 'Bbmaj7', 'Fmaj7', 'A7'],
+    barsPerChord: 1,
+    cycles: 8,
+    leadInstrument: 'synth',
+    padType: 'sawtooth',
+    padFilter: 1850,
+    padWobble: 0.6,
+    padGain: 1.05,
+    chimeVol: 0.18,
+    chimeDensity: 0.85,
+    bassVol: 0.36,
+    drumVol: 0.29,
+    kickPattern:  [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0],
+    snarePattern: [0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1],
+    hatPattern:   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    bassPattern:  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    bassWalk:     [0, 12, 0, 12, 0, 12, 7, 12, 0, 12, 0, 12, 5, 12, 7, 12],
+    stabPattern:  [1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1],
+    leadPattern: [
+      74, 77, 81, 0, 86, 0, 84, 81, 79, 77, 76, 77, 79, 0, 81, 0,
+      82, 0, 81, 79, 77, 0, 76, 74, 73, 0, 76, 79, 81, 0, 85, 0,
+    ],
+    leadGate: [
+      1, 1, 2, 0, 2, 0, 1, 1, 1, 1, 1, 1, 2, 0, 2, 0,
+      2, 0, 1, 1, 2, 0, 1, 1, 2, 0, 1, 1, 2, 0, 2, 0,
+    ],
+  },
+  {
+    // Track 5: Inferno Volcano — MKDS Bowser Castle / Airship Fortress boss rush
+    name: 'Magma Caldera',
+    key: 'Em',
+    bpm: 170,
+    chords: ['Em7', 'C7', 'Am7', 'B7'],
+    barsPerChord: 1,
+    cycles: 8,
+    leadInstrument: 'brass',
+    padType: 'sawtooth',
+    padFilter: 1950,
+    padWobble: 0.5,
+    padGain: 1.1,
+    chimeVol: 0.17,
+    chimeDensity: 0.8,
+    bassVol: 0.37,
+    drumVol: 0.3,
+    kickPattern:  [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0],
+    snarePattern: [0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1],
+    hatPattern:   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    bassPattern:  [1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0],
+    bassWalk:     [0, 0, 12, 0, 7, 7, 12, 0, 0, 0, 12, 0, 6, 0, 7, 0],
+    stabPattern:  [1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0],
+    leadPattern: [
+      76, 0, 79, 83, 84, 0, 83, 79, 78, 79, 81, 79, 76, 0, 71, 0,
+      76, 0, 83, 0, 88, 0, 87, 88, 86, 84, 83, 81, 79, 78, 76, 0,
+    ],
+    leadGate: [
+      2, 0, 1, 1, 2, 0, 1, 1, 1, 1, 1, 1, 2, 0, 2, 0,
+      2, 0, 2, 0, 2, 0, 1, 1, 1, 1, 1, 1, 1, 1, 2, 0,
+    ],
+  },
+  {
+    // Track 6: Haunted Mansion — MKDS Luigi's Mansion spooky harpsichord & theremin bounce
+    name: 'Phantom Manor',
+    key: 'Am',
+    bpm: 156,
+    chords: ['Am7', 'Dm7', 'E7', 'Am7'],
+    barsPerChord: 1,
+    cycles: 8,
+    leadInstrument: 'harpsichord',
+    padType: 'triangle',
+    padFilter: 1550,
+    padWobble: 0.68,
+    padGain: 0.98,
+    chimeVol: 0.19,
+    chimeDensity: 0.82,
+    bassVol: 0.34,
+    drumVol: 0.26,
+    kickPattern:  [1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1],
+    snarePattern: [0, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1],
+    hatPattern:   [1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1],
+    bassPattern:  [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
+    bassWalk:     [0, 0, 3, 0, 7, 0, 8, 0, 7, 0, 3, 0, 0, 0, -1, 0],
+    stabPattern:  [1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0],
+    leadPattern: [
+      69, 0, 72, 0, 76, 0, 77, 76, 0, 75, 76, 0, 81, 0, 76, 0,
+      81, 0, 80, 81, 0, 77, 76, 0, 74, 72, 71, 72, 69, 0, 0, 0,
+    ],
+    leadGate: [
+      1, 0, 1, 0, 1, 0, 1, 2, 0, 1, 2, 0, 2, 0, 2, 0,
+      2, 0, 1, 2, 0, 1, 2, 0, 1, 1, 1, 1, 3, 0, 0, 0,
+    ],
   },
 ];
 
-// Calm menu loop (audit r3) — a laid-back variant of 'Turbo Circuit'
-// (track 1): slow BPM, sparse groove, soft pads. `cycles: Infinity` makes
-// the scheduler loop the progression forever without ever advancing the
-// playlist, so the menu music only ends via stopMenuMusic().
+// Upbeat Mario Kart DS Title & Character Select Groove (replaces sleepy 86 BPM loop!)
 const MENU_TRACK = {
   name: 'Menu Cruise',
-  key: 'C',
-  bpm: 86,
-  chords: ['Cmaj7', 'Am7', 'Fmaj7', 'G7'],
-  barsPerChord: 2,
+  key: 'F',
+  bpm: 136,
+  chords: ['Fmaj7', 'G7', 'Em7', 'Am7'],
+  barsPerChord: 1,
   cycles: Infinity,
+  leadInstrument: 'whistle',
   padType: 'triangle',
-  padFilter: 900,
-  padWobble: 0.22,
-  padGain: 0.7,
-  chimeVol: 0.09,
-  chimeDensity: 0.3,
-  bassVol: 0.15,
-  drumVol: 0.11,
-  kickPattern: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
-  snarePattern: [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
-  hatPattern: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  bassPattern: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  padFilter: 1650,
+  padWobble: 0.28,
+  padGain: 0.85,
+  chimeVol: 0.14,
+  chimeDensity: 0.65,
+  bassVol: 0.28,
+  drumVol: 0.22,
+  kickPattern:  [1, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 0],
+  snarePattern: [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1],
+  hatPattern:   [1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1],
+  bassPattern:  [1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 0],
+  bassWalk:     [0, 0, 12, 0, 0, 7, 12, 0, 0, 0, 12, 0, 5, 7, 0, 0],
+  stabPattern:  [1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0],
+  leadPattern: [
+    77, 0, 81, 0, 84, 0, 81, 79, 0, 76, 79, 0, 81, 0, 76, 0,
+    74, 0, 77, 0, 81, 0, 84, 83, 0, 79, 81, 0, 79, 0, 0, 0,
+  ],
+  leadGate: [
+    2, 0, 2, 0, 2, 0, 1, 2, 0, 1, 2, 0, 2, 0, 2, 0,
+    2, 0, 2, 0, 2, 0, 1, 2, 0, 1, 2, 0, 3, 0, 0, 0,
+  ],
+};
+
+// Iconic Super Star Invincibility Theme (178 BPM Eurobeat/Disco riff)
+const STAR_TRACK = {
+  name: 'Starman Hyper',
+  key: 'C',
+  bpm: 178,
+  chords: ['Fmaj7', 'Em7', 'Fmaj7', 'Em7'],
+  barsPerChord: 1,
+  cycles: Infinity,
+  leadInstrument: 'synth',
+  padType: 'sawtooth',
+  padFilter: 2400,
+  padWobble: 0.5,
+  padGain: 1.1,
+  chimeVol: 0.2,
+  chimeDensity: 0.9,
+  bassVol: 0.38,
+  drumVol: 0.3,
+  kickPattern:  [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0],
+  snarePattern: [0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1],
+  hatPattern:   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  bassPattern:  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  bassWalk:     [0, 12, 0, 12, 0, 12, 0, 12, 0, 12, 0, 12, 0, 12, 7, 12],
+  stabPattern:  [1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0],
+  leadPattern: [
+    84, 0, 84, 0, 84, 0, 74, 84, 0, 84, 0, 74, 84, 74, 84, 0,
+    83, 0, 83, 0, 83, 0, 72, 83, 0, 83, 0, 72, 83, 72, 83, 0,
+  ],
+  leadGate: [
+    2, 0, 2, 0, 2, 0, 1, 2, 0, 2, 0, 1, 1, 1, 2, 0,
+    2, 0, 2, 0, 2, 0, 1, 2, 0, 2, 0, 1, 1, 1, 2, 0,
+  ],
 };
 
 const STEPS_PER_BEAT = 4; // 16th notes
-const SWING = 0.62;       // delayed offbeats (lo-fi groove)
+const SWING = 0.54;       // tight arcade groove (snappy, not sluggish)
 const LOOKAHEAD = 0.35;   // scheduler lookahead window (s)
 
 export class MusicEngine {
-  /**
-   * Accepts both call styles:
-   *   new MusicEngine(ctx, { output, volume, onEnded, seed })
-   *   new MusicEngine({ ctx, output, volume, onEnded, seed })
-   * @param {BaseAudioContext} ctx
-   * @param {AudioNode} [opts.output] Destination (defaults to ctx.destination).
-   * @param {number} [opts.volume] Music bus volume (default 0.34).
-   * @param {Function} [opts.onEnded] Called with the finished track.
-   * @param {number} [opts.seed] RNG seed for deterministic synthesis.
-   */
   constructor(ctxOrOpts, opts = {}) {
     const cfg = (ctxOrOpts && typeof ctxOrOpts === 'object' && 'ctx' in ctxOrOpts)
       ? ctxOrOpts
       : { ...opts, ctx: ctxOrOpts };
-    const { ctx, output = null, volume = 0.34, onEnded = null, seed = Date.now(), track = null, menu = false, intensity = 0.5 } = cfg;
+    const { ctx, output = null, volume = 0.36, onEnded = null, seed = Date.now(), track = null, menu = false, intensity = 0.5 } = cfg;
 
     this._ctx = ctx;
     this._out = output || ctx.destination;
     this._volume = clamp01(volume);
-    // Emotional arc state (audit r3): smoothed toward _intensityTarget in
-    // _tick. 0 = calm (menu), 0.5 = normal race, ≥0.7 = final-lap lift.
     this._intensityTarget = clamp01(intensity);
     this._intensity = this._intensityTarget;
     this._menu = menu;
+    this._starMode = false;
+    this._savedTrackBeforeStar = null;
     this._onEnded = onEnded;
     this._seed = seed >>> 0;
     this._rng = this._mulberry32(this._seed);
     this._offline = typeof OfflineAudioContext !== 'undefined' && ctx instanceof OfflineAudioContext;
 
-    // Bus starts muted; fades in on play (pitfall: no clicks).
     this._bus = ctx.createGain();
     this._bus.gain.value = 0;
 
-    // Sidechain-style duck gain (AAA groove): the kick dips the whole music
-    // bus ~10% for ~0.12s, so the mix breathes with the beat instead of
-    // sitting flat. Programmed from the scheduler (WebAudio has no cheap
-    // native sidechain path).
     this._duckGain = ctx.createGain();
     this._duckGain.gain.value = 1;
 
-    // Lo-fi space: short feedback delay.
+    // Stereo slapback delay for arcade space
     this._delay = ctx.createDelay(1.0);
-    this._delay.delayTime.value = 0.27;
+    this._delay.delayTime.value = 0.19;
     this._fb = ctx.createGain();
-    this._fb.gain.value = 0.3;
+    this._fb.gain.value = 0.24;
     this._wet = ctx.createGain();
-    this._wet.gain.value = 0.2;
+    this._wet.gain.value = 0.16;
     this._bus.connect(this._duckGain);
     this._duckGain.connect(this._delay);
     this._delay.connect(this._fb);
@@ -242,11 +371,8 @@ export class MusicEngine {
     this._vinylGain = null;
     this._crackleTimer = null;
 
-    // `menu: true` swaps the shuffled 3-track playlist for the single calm
-    // loop; everything downstream (scheduler, instruments) is identical.
+    this._pinnedTrackName = track || null;
     this._playlist = menu ? [MENU_TRACK] : TRACKS.slice();
-    // `track` option pins the FIRST song (per-track identity — NEON CITY
-    // opens with 'Neon Nights'; then the playlist continues shuffled).
     if (track) {
       const ti = this._playlist.findIndex((t) => t.name === track);
       if (ti > 0) this._playlist.unshift(this._playlist.splice(ti, 1)[0]);
@@ -274,23 +400,14 @@ export class MusicEngine {
 
   /* ---------------- Lifecycle ---------------- */
 
-  /**
-   * Shuffles the playlist and starts playing. A repeated call while
-   * playing restarts with a fresh shuffle.
-   * @param {Function} [onTrackEnd] Optional per-call callback.
-   */
   start(onTrackEnd = null) {
     if (onTrackEnd) this._onTrackEnd = onTrackEnd;
     if (this._playing) this.stop();
     this._stopping = false;
     this._shufflePlaylist();
-    this._playNext(0.15);
+    this._playNext(0.08);
   }
 
-  /**
-   * Stops everything (fast fade). The `_stopping` guard prevents the
-   * pending _finishTrack timeout from starting the next track.
-   */
   stop() {
     this._stopping = true;
     this._playing = false;
@@ -303,14 +420,13 @@ export class MusicEngine {
     const now = this._ctx.currentTime;
     this._bus.gain.cancelScheduledValues(now);
     this._bus.gain.setValueAtTime(this._bus.gain.value, now);
-    this._bus.gain.linearRampToValueAtTime(0, now + 0.4);
+    this._bus.gain.linearRampToValueAtTime(0, now + 0.35);
   }
 
-  /** Skips to the next track in the playlist. */
   next() {
     if (!this._playing) {
       this._stopping = false;
-      this._playNext(0.1);
+      this._playNext(0.08);
       return;
     }
     this._stopScheduler();
@@ -322,12 +438,12 @@ export class MusicEngine {
     const now = this._ctx.currentTime;
     this._bus.gain.cancelScheduledValues(now);
     this._bus.gain.setValueAtTime(this._bus.gain.value, now);
-    this._bus.gain.linearRampToValueAtTime(0, now + 0.2);
+    this._bus.gain.linearRampToValueAtTime(0, now + 0.18);
     const self = this;
     this._finishTimer = setTimeout(() => {
       this._finishTimer = null;
-      if (!self._stopping) self._playNext(0.35);
-    }, 260);
+      if (!self._stopping) self._playNext(0.25);
+    }, 220);
   }
 
   setVolume(v) {
@@ -337,19 +453,28 @@ export class MusicEngine {
     }
   }
 
-  /**
-   * Emotional intensity 0..1 (audit r3):
-   *   0.0 — calm: pad + bass pulled back (menu / cruise)
-   *   0.5 — normal race arrangement
-   *   ≥0.7 — lift: ghost-hat 16th layer, pad filter opens (+60%), BPM +4%
-   * Values are smoothed toward the target in _tick (~0.4s ramp) so the
-   * final-lap call swells in instead of snapping.
-   * @param {number} v 0..1
-   */
   setIntensity(v) {
     this._intensityTarget = clamp01(v);
-    // Before the first notes, snap so the opening color is right (menu).
     if (!this._playing) this._intensity = this._intensityTarget;
+  }
+
+  /**
+   * Toggle Mario Kart Super Star Invincibility music mode!
+   */
+  setStarMode(active) {
+    const want = !!active;
+    if (want === this._starMode) return;
+    this._starMode = want;
+    if (!this._playing || this._menu) return;
+    if (want) {
+      this._savedTrackBeforeStar = this._currentTrack;
+      this._currentTrack = STAR_TRACK;
+      this._step = 0;
+    } else if (this._savedTrackBeforeStar) {
+      this._currentTrack = this._savedTrackBeforeStar;
+      this._savedTrackBeforeStar = null;
+      this._step = 0;
+    }
   }
 
   isPlaying() {
@@ -363,21 +488,21 @@ export class MusicEngine {
   /* ---------------- Playlist ---------------- */
 
   _shufflePlaylist() {
-    // Menu mode owns a single infinite loop; races shuffle the playlist.
     const list = (this._menu ? [MENU_TRACK] : TRACKS).slice();
     for (let i = list.length - 1; i > 0; i--) {
       const j = Math.floor(this._rng() * (i + 1));
       [list[i], list[j]] = [list[j], list[i]];
     }
-    // The last played track never opens the next cycle (no immediate
-    // repeat of the opening track).
-    if (this._lastTrack) {
+    // Keep the track-specific theme song first when starting a race!
+    if (this._pinnedTrackName && !this._menu) {
+      const pi = list.findIndex((t) => t.name === this._pinnedTrackName);
+      if (pi > 0) {
+        const [pinned] = list.splice(pi, 1);
+        list.unshift(pinned);
+      }
+    } else if (this._lastTrack) {
       const idx = list.findIndex((t) => t.name === this._lastTrack);
       if (idx > -1) {
-        // AUDIT R25-FIX: push the spliced TRACK OBJECT, not the name
-        // string — `_playNext` reads `.chords/.bpm` off the entry, so a
-        // bare string threw on the 4th play of the 2nd cycle and killed
-        // the music in long sessions.
         const [t] = list.splice(idx, 1);
         list.push(t);
       }
@@ -386,25 +511,24 @@ export class MusicEngine {
     this._trackIdx = -1;
   }
 
-  _playNext(startDelay = 0.1) {
+  _playNext(startDelay = 0.08) {
     this._stopping = false;
     this._trackIdx += 1;
     if (this._trackIdx >= this._playlist.length) {
       this._shufflePlaylist();
       this._trackIdx = 0;
     }
-    const track = this._playlist[this._trackIdx];
+    const track = this._starMode ? STAR_TRACK : this._playlist[this._trackIdx];
     this._currentTrack = track;
     this._lastTrack = track.name;
     this._step = 0;
     this._nextStepTime = this._ctx.currentTime + startDelay;
     this._playing = true;
     this._ensureVinyl();
-    // Fade the bus in (pitfall: bus starts at 0).
     const now = this._ctx.currentTime;
     this._bus.gain.cancelScheduledValues(now);
     this._bus.gain.setValueAtTime(this._bus.gain.value, now);
-    this._bus.gain.linearRampToValueAtTime(this._volume, now + 1.2);
+    this._bus.gain.linearRampToValueAtTime(this._volume, now + 0.45);
     this._startScheduler();
   }
 
@@ -412,7 +536,7 @@ export class MusicEngine {
 
   _startScheduler() {
     if (this._timer) return;
-    this._timer = setInterval(() => this._tick(), 100);
+    this._timer = setInterval(() => this._tick(), 80);
   }
 
   _stopScheduler() {
@@ -423,9 +547,7 @@ export class MusicEngine {
   }
 
   _tick() {
-    // Smooth intensity toward its target at ~10Hz (0.25/tick ≈ 0.4s ramp)
-    // so the final-lap lift swells in; BPM follows the smoothed value.
-    this._intensity += (this._intensityTarget - this._intensity) * 0.25;
+    this._intensity += (this._intensityTarget - this._intensity) * 0.28;
     const stepDur = this._stepDuration();
     while (this._nextStepTime < this._ctx.currentTime + LOOKAHEAD) {
       this._scheduleStep(this._step, this._nextStepTime);
@@ -434,16 +556,17 @@ export class MusicEngine {
       if (!this._playing) return;
     }
     if (this._step >= this._totalSteps()) {
-      // `_nextStepTime` is the audio time immediately after the last step.
-      // Do not start the fade at `currentTime`: lookahead may have queued the
-      // final beat up to LOOKAHEAD seconds ahead.
       this._finishTrack(this._nextStepTime);
     }
   }
 
-  /** Effective 16th-step duration — track BPM nudged by intensity (+4% at max). */
+  /**
+   * Effective 16th-step duration — on the Final Lap (_intensity >= 0.75),
+   * Mario Kart DS speeds up the music by +14% for an adrenaline rush!
+   */
   _stepDuration() {
-    return 60 / (this._currentTrack.bpm * (1 + 0.04 * this._intensity)) / STEPS_PER_BEAT;
+    const finalLapBoost = this._intensity >= 0.75 ? 0.14 : 0.05 * this._intensity;
+    return 60 / (this._currentTrack.bpm * (1 + finalLapBoost)) / STEPS_PER_BEAT;
   }
 
   _totalSteps() {
@@ -458,18 +581,17 @@ export class MusicEngine {
     const end = Math.max(now, trackEndTime);
     this._bus.gain.cancelScheduledValues(now);
     this._bus.gain.setValueAtTime(this._bus.gain.value, now);
-    this._bus.gain.linearRampToValueAtTime(0, end + 0.6);
+    this._bus.gain.linearRampToValueAtTime(0, end + 0.5);
     const cb = this._onEnded;
     const track = this._currentTrack;
     this._finishTimer = setTimeout(() => {
       this._finishTimer = null;
       if (cb) cb(track);
-      // Guard: stop() (or a next() already pending) must not restart.
-      if (!this._stopping) this._playNext(0.4);
-    }, Math.max(650, (end - now) * 1000 + 650));
+      if (!this._stopping) this._playNext(0.3);
+    }, Math.max(550, (end - now) * 1000 + 550));
   }
 
-  /* ---------------- Vinyl texture ---------------- */
+  /* ---------------- Subtle analog air floor (kept ultra-clean for arcade punch) ---------------- */
 
   _ensureVinyl() {
     if (this._vinyl) return;
@@ -477,49 +599,42 @@ export class MusicEngine {
     const len = ctx.sampleRate * 2;
     const buf = ctx.createBuffer(1, len, ctx.sampleRate);
     const data = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) data[i] = (this._rng() * 2 - 1) * 0.5;
+    for (let i = 0; i < len; i++) data[i] = (this._rng() * 2 - 1) * 0.15;
     const src = ctx.createBufferSource();
     src.buffer = buf;
     src.loop = true;
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
-    filter.frequency.value = 3200;
+    filter.frequency.value = 2800;
     const gain = ctx.createGain();
-    gain.gain.value = 0.012;
+    gain.gain.value = 0.0025;
     src.connect(filter);
     filter.connect(gain);
     gain.connect(this._bus);
     src.start();
     this._vinyl = src;
     this._vinylGain = gain;
-    if (!this._offline) {
-      // Random crackles every ~900ms while playing.
-      this._crackleTimer = setInterval(() => {
-        if (!this._playing) return;
-        if (this._rng() < 0.4) this._playCrackle(ctx.currentTime + 0.01);
-      }, 900);
-    }
   }
 
   _playCrackle(at) {
     const ctx = this._ctx;
-    const len = Math.floor(ctx.sampleRate * 0.004);
+    const len = Math.floor(ctx.sampleRate * 0.003);
     const buf = ctx.createBuffer(1, len, ctx.sampleRate);
     const data = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) data[i] = (this._rng() * 2 - 1) * 0.4;
+    for (let i = 0; i < len; i++) data[i] = (this._rng() * 2 - 1) * 0.2;
     const src = ctx.createBufferSource();
     src.buffer = buf;
     const hp = ctx.createBiquadFilter();
     hp.type = 'highpass';
-    hp.frequency.value = 2500;
+    hp.frequency.value = 3000;
     const g = ctx.createGain();
-    g.gain.setValueAtTime(0.05, at);
-    g.gain.exponentialRampToValueAtTime(0.001, at + 0.004);
+    g.gain.setValueAtTime(0.015, at);
+    g.gain.exponentialRampToValueAtTime(0.001, at + 0.003);
     src.connect(hp);
     hp.connect(g);
     g.connect(this._bus);
     src.start(at);
-    src.stop(at + len / ctx.sampleRate + 0.02); // AUDIT R66: stop explícito
+    src.stop(at + len / ctx.sampleRate + 0.02);
   }
 
   _stopVinyl() {
@@ -534,10 +649,9 @@ export class MusicEngine {
     }
   }
 
-  /* ---------------- Step scheduling ---------------- */
+  /* ---------------- Step scheduling (Mario Kart DS Multi-Track Sequencer) ---------------- */
 
   _swingTime(step, time) {
-    // Offbeats (odd steps) land late — lo-fi swing.
     if (step % 2 === 1) {
       return time + this._stepDuration() * (SWING - 0.5);
     }
@@ -551,63 +665,208 @@ export class MusicEngine {
     const chordIdx = Math.floor(step / stepsPerChord) % t.chords.length;
     const stepInChord = step % stepsPerChord;
     const stepInBar = step % stepsPerBar;
+    const stepInPhrase = step % 64; // 4-bar phrase cycle
+    const stepInHook = step % 32;   // 2-bar melodic hook cycle
 
-    // Chord change -> pad + bass root + occasional chime.
+    // Final Lap key modulation (+2 semitones on Final Lap, just like Mario Kart!)
+    const transpose = this._intensity >= 0.78 ? 2 : 0;
+    const rawChord = CHORDS[t.chords[chordIdx]] || CHORDS.Cmaj7;
+    const chord = transpose ? rawChord.map((n) => n + transpose) : rawChord;
+
+    // 1. Harmonic Pad + Crash Cymbal on Bar/Phrase Boundaries
     if (stepInChord === 0) {
-      const chord = CHORDS[t.chords[chordIdx]];
       this._playPad(chord, time, t, stepsPerChord);
-      this._playBass(chord[0] - 12, time, t);
-      if (t.chimeDensity > 0 && this._rng() < 0.35) this._playChime(chord, time, t);
     }
-    // Sparse chime melody mid-chord.
-    if (t.chimeDensity > 0 && stepInChord === 8 && this._rng() < t.chimeDensity) {
-      this._playChime(CHORDS[t.chords[chordIdx]], time, t);
+    if (stepInPhrase === 0) {
+      this._playCrash(time, t);
     }
 
-    // Drums.
-    if (t.kickPattern[stepInBar]) {
-      this._playKick(time, t);
-      this._scheduleDuck(time); // sidechain-style pump on the kick
+    // 2. Syncopated Mario Kart DS Brass / Polysynth Chord Stabs
+    if (t.stabPattern && t.stabPattern[stepInBar]) {
+      this._playBrassStab(chord, this._swingTime(step, time), t);
     }
-    if (t.snarePattern[stepInBar]) this._playSnare(time, t);
-    if (t.hatPattern[stepInBar]) this._playHat(this._swingTime(step, time), t);
-    // Intensity lift (audit r3): at ≥0.7 quiet ghost hats fill the 16th
-    // gaps — the groove tightens into a driving double-time feel on the
-    // final lap.
-    else if (this._intensity >= 0.7) this._playHat(this._swingTime(step, time), t, 0.55);
 
-    // Bass groove.
+    // 3. Composed Mario Kart DS Lead Melody Hook (32-step pattern)
+    if (t.leadPattern) {
+      const leadMidi = t.leadPattern[stepInHook];
+      if (leadMidi && leadMidi > 0) {
+        const gateSteps = (t.leadGate && t.leadGate[stepInHook]) || 2;
+        // Add subtle melodic variation on the 2nd half of the 4-bar phrase
+        const phraseVar = (stepInPhrase >= 48 && stepInHook >= 24 && leadMidi < 84) ? 2 : 0;
+        this._playLead(leadMidi + transpose + phraseVar, gateSteps, this._swingTime(step, time), t);
+      }
+    }
+
+    // 4. Sparkling 16th-Note Nintendo DS Chip-Bell Counter-Arpeggio
+    if (step % 2 === 0 || this._intensity >= 0.65) {
+      this._playArp(chord, stepInBar, this._swingTime(step, time), t);
+    }
+    if (t.chimeDensity > 0 && (stepInBar === 0 || stepInBar === 6 || stepInBar === 12) && this._rng() < t.chimeDensity) {
+      this._playChime(chord, time, t, transpose);
+    }
+
+    // 5. Funky Walking / Octave Slap-Synth Bassline
     if (t.bassPattern[stepInBar]) {
-      this._playBass(CHORDS[t.chords[chordIdx]][0] - 12, time, t, 0.9);
+      const walkOffset = (t.bassWalk && t.bassWalk[stepInBar]) || 0;
+      const bassNote = chord[0] - 12 + walkOffset;
+      const isAccent = stepInBar % 4 === 0 || walkOffset >= 12;
+      this._playBass(bassNote, time, t, isAccent ? 1.05 : 0.88, walkOffset >= 12);
+    }
+
+    // 6. Arcade Drum Kit + 4-Bar Snare/Tom Fill Rolls
+    const isFillZone = stepInPhrase >= 60; // Last beat of every 4 bars = drum fill!
+    if (t.kickPattern[stepInBar] || (isFillZone && stepInBar % 2 === 0)) {
+      this._playKick(time, t);
+      this._scheduleDuck(time);
+    }
+    if (t.snarePattern[stepInBar] || isFillZone) {
+      const fillPitch = isFillZone ? 1.25 - (stepInPhrase - 60) * 0.08 : 1.0;
+      const fillVel = isFillZone ? 0.85 : 1.0;
+      this._playSnare(this._swingTime(step, time), t, fillPitch, fillVel);
+    }
+    const isOpenHat = stepInBar % 4 === 2;
+    if (t.hatPattern[stepInBar]) {
+      this._playHat(this._swingTime(step, time), t, isOpenHat ? 1.25 : 0.85, isOpenHat);
+    } else if (this._intensity >= 0.6) {
+      this._playHat(this._swingTime(step, time), t, 0.55, false);
     }
   }
 
-  /* ---------------- Instruments ---------------- */
+  /* ---------------- Mario Kart DS Synthesized Instruments ---------------- */
+
+  /**
+   * Expressive Mario Kart DS Lead Synthesizer:
+   *   - 'brass': Dual detuned sawtooth + octave square with pitch-scoop attack & vibrato
+   *   - 'synth': Bright Waluigi-Pinball style dual-saw + pulse lead
+   *   - 'harpsichord': Luigi's-Mansion style plucky harpsichord + spooky vibrato overtone
+   *   - 'whistle': Cheerful pitch-gliding whistle/flute + bell attack
+   */
+  _playLead(noteMidi, gateSteps, time, track) {
+    const ctx = this._ctx;
+    const stepDur = this._stepDuration();
+    const dur = Math.max(0.09, gateSteps * stepDur * 0.92);
+    const freq = midiHz(noteMidi);
+    const mode = track.leadInstrument || 'brass';
+    const leadVol = 0.135 * (0.85 + 0.3 * this._intensity);
+
+    const outGain = ctx.createGain();
+    outGain.gain.setValueAtTime(0.0001, time);
+    outGain.gain.linearRampToValueAtTime(leadVol, time + (mode === 'harpsichord' ? 0.004 : 0.014));
+    outGain.gain.setValueAtTime(leadVol * 0.82, Math.max(time + 0.02, time + dur - 0.03));
+    outGain.gain.exponentialRampToValueAtTime(0.0001, time + dur + 0.04);
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    const baseCut = mode === 'synth' ? 3800 : mode === 'harpsichord' ? 4200 : 2900;
+    filter.frequency.setValueAtTime(baseCut * 0.55, time);
+    filter.frequency.exponentialRampToValueAtTime(baseCut * (1 + 0.35 * this._intensity), time + 0.045);
+    filter.Q.value = mode === 'synth' ? 2.2 : 1.3;
+    filter.connect(outGain);
+    outGain.connect(this._bus);
+
+    // Expressive vibrato on sustained notes
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = mode === 'harpsichord' ? 6.5 : 5.6;
+    const lfoGain = ctx.createGain();
+    lfoGain.gain.setValueAtTime(0.001, time);
+    lfoGain.gain.linearRampToValueAtTime(freq * (mode === 'harpsichord' ? 0.014 : 0.008), time + 0.08);
+    lfo.connect(lfoGain);
+    lfo.start(time);
+    lfo.stop(time + dur + 0.05);
+
+    const voices = mode === 'whistle'
+      ? [{ type: 'triangle', detune: 0, mult: 1, gain: 0.85 }, { type: 'sine', detune: 5, mult: 2, gain: 0.35 }]
+      : mode === 'harpsichord'
+      ? [{ type: 'sawtooth', detune: -6, mult: 1, gain: 0.65 }, { type: 'square', detune: 6, mult: 2, gain: 0.35 }]
+      : [{ type: 'sawtooth', detune: -8, mult: 1, gain: 0.58 }, { type: 'sawtooth', detune: 8, mult: 1, gain: 0.58 }, { type: 'square', detune: 0, mult: 1, gain: 0.28 }];
+
+    for (const v of voices) {
+      const osc = ctx.createOscillator();
+      osc.type = v.type;
+      // Brass pitch-scoop attack (starts 3% flat and snaps to pitch in 18ms)
+      osc.frequency.setValueAtTime(freq * v.mult * 0.975, time);
+      osc.frequency.exponentialRampToValueAtTime(freq * v.mult, time + 0.018);
+      osc.detune.value = v.detune;
+      lfoGain.connect(osc.frequency);
+      const vg = ctx.createGain();
+      vg.gain.value = v.gain;
+      osc.connect(vg);
+      vg.connect(filter);
+      osc.start(time);
+      osc.stop(time + dur + 0.05);
+    }
+  }
+
+  /**
+   * Punchy syncopated Mario Kart DS Brass / Polysynth Chord Stab
+   */
+  _playBrassStab(chord, time, track) {
+    const ctx = this._ctx;
+    const dur = this._stepDuration() * 1.45;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(900, time);
+    filter.frequency.exponentialRampToValueAtTime(2600 * (1 + 0.3 * this._intensity), time + 0.025);
+    filter.frequency.exponentialRampToValueAtTime(1100, time + dur);
+    filter.Q.value = 1.4;
+
+    const g = ctx.createGain();
+    const stabVol = 0.058 * track.padGain * (0.85 + 0.3 * this._intensity);
+    g.gain.setValueAtTime(0.0001, time);
+    g.gain.linearRampToValueAtTime(stabVol, time + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, time + dur + 0.02);
+    filter.connect(g);
+    g.connect(this._bus);
+
+    for (const note of chord) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.value = midiHz(note + 12);
+      osc.detune.value = (this._rng() * 2 - 1) * 6;
+      osc.connect(filter);
+      osc.start(time);
+      osc.stop(time + dur + 0.03);
+    }
+  }
+
+  /**
+   * Sparkling 16th-note Nintendo DS Counter-Arpeggiator
+   */
+  _playArp(chord, stepInBar, time, track) {
+    const ctx = this._ctx;
+    const arpOrder = [0, 1, 2, 3, 2, 1, 3, 2, 0, 2, 1, 3, 2, 3, 1, 2];
+    const idx = arpOrder[stepInBar % arpOrder.length] % chord.length;
+    const octaveShift = (stepInBar % 4 === 3) ? 24 : 12;
+    const note = chord[idx] + octaveShift;
+    const dur = this._stepDuration() * 0.85;
+
+    const osc = ctx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.value = midiHz(note);
+    const g = ctx.createGain();
+    const vol = 0.055 * (0.75 + 0.4 * this._intensity);
+    g.gain.setValueAtTime(0.0001, time);
+    g.gain.linearRampToValueAtTime(vol, time + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, time + dur + 0.02);
+    osc.connect(g);
+    g.connect(this._bus);
+    osc.start(time);
+    osc.stop(time + dur + 0.03);
+  }
 
   _playPad(chord, time, track, stepsPerChord) {
     const ctx = this._ctx;
-    const dur = stepsPerChord * this._stepDuration() + 0.4;
+    const dur = stepsPerChord * this._stepDuration() + 0.25;
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
-    // Intensity opens the pad filter up to +60% cutoff (brighter at the lift).
-    const filterFreq = track.padFilter * (1 + 0.6 * this._intensity);
+    const filterFreq = track.padFilter * (1 + 0.55 * this._intensity);
     filter.frequency.value = filterFreq;
-    filter.Q.value = 0.6;
-    // Slow ~0.1Hz wobble on the filter cutoff.
-    const lfo = ctx.createOscillator();
-    lfo.frequency.value = 0.07 + track.padWobble * 0.09;
-    const lfoGain = ctx.createGain();
-    lfoGain.gain.value = filterFreq * 0.16;
-    lfo.connect(lfoGain);
-    lfoGain.connect(filter.frequency);
-    lfo.start(time);
-    lfo.stop(time + dur);
+    filter.Q.value = 0.7;
     const g = ctx.createGain();
-    // Calm (0) pulls pads back to 0.8x; full hype pushes them to 1.1x.
-    const padVol = 0.085 * track.padGain * (0.8 + 0.3 * this._intensity);
+    const padVol = 0.065 * track.padGain * (0.8 + 0.3 * this._intensity);
     g.gain.setValueAtTime(0.0001, time);
-    g.gain.linearRampToValueAtTime(padVol, time + 0.5);
-    g.gain.setValueAtTime(padVol, time + dur - 0.5);
+    g.gain.linearRampToValueAtTime(padVol, time + 0.08);
+    g.gain.setValueAtTime(padVol, Math.max(time + 0.1, time + dur - 0.18));
     g.gain.linearRampToValueAtTime(0.0001, time + dur);
     filter.connect(g);
     g.connect(this._bus);
@@ -619,59 +878,62 @@ export class MusicEngine {
       osc.connect(filter);
       osc.start(time);
       osc.stop(time + dur);
-      // Soft sine one octave up (brightness layer).
-      if (track.chimeVol > 0.12) {
-        const osc2 = ctx.createOscillator();
-        osc2.type = 'sine';
-        osc2.frequency.value = midiHz(note + 12);
-        osc2.detune.value = (this._rng() * 2 - 1) * 4;
-        const g2 = ctx.createGain();
-        const bright = 0.035 * track.padGain * (0.7 + 0.5 * this._intensity);
-        g2.gain.setValueAtTime(0.0001, time);
-        g2.gain.linearRampToValueAtTime(bright, time + 0.6);
-        g2.gain.setValueAtTime(bright, time + dur - 0.6);
-        g2.gain.linearRampToValueAtTime(0.0001, time + dur);
-        osc2.connect(g2);
-        g2.connect(this._bus);
-        osc2.start(time);
-        osc2.stop(time + dur);
-      }
     }
   }
 
-  _playBass(noteMidi, time, track, vel = 1) {
+  /**
+   * Funky Mario Kart DS Slap / FM Synth Bass (Sawtooth + Sub Triangle through resonant filter snap)
+   */
+  _playBass(noteMidi, time, track, vel = 1, isSlap = false) {
     const ctx = this._ctx;
+    const dur = this._stepDuration() * 1.65;
+    const freq = midiHz(Math.max(28, noteMidi));
+
     const osc = ctx.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.value = midiHz(noteMidi);
+    osc.type = 'sawtooth';
+    osc.frequency.value = freq;
+
+    const sub = ctx.createOscillator();
+    sub.type = 'triangle';
+    sub.frequency.value = freq;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(isSlap ? 2200 : 1400, time);
+    filter.frequency.exponentialRampToValueAtTime(240, time + 0.085);
+    filter.Q.value = isSlap ? 3.2 : 1.8;
+
     const g = ctx.createGain();
-    // Calm (0) pulls the bass back to 0.7x; the lift beefs it up to 1.1x.
-    const vol = 0.2 * track.bassVol * vel * (0.7 + 0.4 * this._intensity);
+    const vol = 0.24 * track.bassVol * vel * (0.8 + 0.35 * this._intensity);
     g.gain.setValueAtTime(0.0001, time);
-    g.gain.linearRampToValueAtTime(vol, time + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.001, time + 0.42);
-    osc.connect(g);
+    g.gain.linearRampToValueAtTime(vol, time + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.001, time + dur);
+
+    osc.connect(filter);
+    sub.connect(filter);
+    filter.connect(g);
     g.connect(this._bus);
     osc.start(time);
-    osc.stop(time + 0.5);
+    sub.start(time);
+    osc.stop(time + dur + 0.02);
+    sub.stop(time + dur + 0.02);
   }
 
-  _playChime(chord, time, track) {
+  _playChime(chord, time, track, transpose = 0) {
     const ctx = this._ctx;
     const pool = PENTA[track.key] || PENTA.C;
-    const note = pool[Math.floor(this._rng() * pool.length)] + (this._rng() < 0.3 ? 12 : 0);
+    const note = pool[Math.floor(this._rng() * pool.length)] + 12 + transpose;
     const f = midiHz(note);
-    const dur = 0.9;
+    const dur = 0.45;
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, time);
-    g.gain.linearRampToValueAtTime(track.chimeVol * (0.6 + 0.5 * this._intensity), time + 0.01);
+    g.gain.linearRampToValueAtTime(track.chimeVol * 0.7 * (0.7 + 0.4 * this._intensity), time + 0.006);
     g.gain.exponentialRampToValueAtTime(0.001, time + dur);
     g.connect(this._bus);
-    for (const partial of [1, 2, 3]) {
+    for (const partial of [1, 2]) {
       const osc = ctx.createOscillator();
       osc.type = 'sine';
       osc.frequency.value = f * partial;
-      osc.detune.value = (this._rng() * 2 - 1) * 3;
       const pg = ctx.createGain();
       pg.gain.value = 1 / partial;
       osc.connect(pg);
@@ -685,18 +947,17 @@ export class MusicEngine {
     const ctx = this._ctx;
     const osc = ctx.createOscillator();
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(150, time);
-    osc.frequency.exponentialRampToValueAtTime(46, time + 0.09);
+    osc.frequency.setValueAtTime(165, time);
+    osc.frequency.exponentialRampToValueAtTime(48, time + 0.085);
     const g = ctx.createGain();
-    const vol = 0.72 * track.drumVol * (0.75 + 0.35 * this._intensity);
+    const vol = 0.78 * track.drumVol * (0.8 + 0.3 * this._intensity);
     g.gain.setValueAtTime(vol, time);
     g.gain.exponentialRampToValueAtTime(0.001, time + 0.13);
     osc.connect(g);
     g.connect(this._bus);
     osc.start(time);
     osc.stop(time + 0.15);
-    // Click transient (short highpassed noise) — gives the kick a physical
-    // beater attack instead of a pure sine thump.
+
     const len = Math.floor(ctx.sampleRate * 0.012);
     const buf = ctx.createBuffer(1, len, ctx.sampleRate);
     const data = buf.getChannelData(0);
@@ -707,115 +968,116 @@ export class MusicEngine {
     hp.type = 'highpass';
     hp.frequency.value = 2200;
     const cg = ctx.createGain();
-    cg.gain.value = 0.1 * track.drumVol * (0.75 + 0.35 * this._intensity);
+    cg.gain.value = 0.12 * track.drumVol * (0.8 + 0.3 * this._intensity);
     src.connect(hp);
     hp.connect(cg);
     cg.connect(this._bus);
     src.start(time);
-    src.stop(time + len / ctx.sampleRate + 0.02); // AUDIT R66: stop explícito (nodes finitos não são GC'd no WebAudio)
+    src.stop(time + len / ctx.sampleRate + 0.02);
   }
 
-  /** Dips the music bus right on the kick (sidechain pump, ~12%). */
   _scheduleDuck(time) {
-    // AUDIT R66 (auditoria som #1/5): o duck era agendado com currentTime e
-    // cancelava/re-agendava a cada tick — pumping irregular + atropelava o
-    // fade-in do bus. Agora agenda NO tempo da batida (futuro).
     const t = time;
     this._duckGain.gain.cancelScheduledValues(t);
     this._duckGain.gain.setValueAtTime(1, t);
-    this._duckGain.gain.linearRampToValueAtTime(0.88, t + 0.015);
-    this._duckGain.gain.linearRampToValueAtTime(1, t + 0.14);
+    this._duckGain.gain.linearRampToValueAtTime(0.9, t + 0.012);
+    this._duckGain.gain.linearRampToValueAtTime(1, t + 0.11);
   }
 
-  _playSnare(time, track) {
+  _playSnare(time, track, pitchMult = 1, velMult = 1) {
     const ctx = this._ctx;
-    const len = Math.floor(ctx.sampleRate * 0.09);
+    const len = Math.floor(ctx.sampleRate * 0.085);
     const buf = ctx.createBuffer(1, len, ctx.sampleRate);
     const data = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) data[i] = (this._rng() * 2 - 1) * Math.pow(1 - i / len, 1.6);
+    for (let i = 0; i < len; i++) data[i] = (this._rng() * 2 - 1) * Math.pow(1 - i / len, 1.5);
     const src = ctx.createBufferSource();
     src.buffer = buf;
     const bp = ctx.createBiquadFilter();
     bp.type = 'bandpass';
-    bp.frequency.value = 1700;
-    bp.Q.value = 0.7;
+    bp.frequency.value = 1850 * pitchMult;
+    bp.Q.value = 0.75;
     const g = ctx.createGain();
-    g.gain.value = 0.45 * track.drumVol * (0.75 + 0.35 * this._intensity);
+    g.gain.value = 0.48 * track.drumVol * (0.8 + 0.3 * this._intensity) * velMult;
     src.connect(bp);
     bp.connect(g);
     g.connect(this._bus);
     src.start(time);
-    src.stop(time + len / ctx.sampleRate + 0.02); // AUDIT R66: stop explícito
-    // Body tone (short sine at ~190Hz) — the snare needs a pitch core or it
-    // reads as pure white-noise hiss.
+    src.stop(time + len / ctx.sampleRate + 0.02);
+
     const body = ctx.createOscillator();
-    body.type = 'sine';
-    body.frequency.setValueAtTime(230, time);
-    body.frequency.exponentialRampToValueAtTime(170, time + 0.06);
+    body.type = 'triangle';
+    body.frequency.setValueAtTime(240 * pitchMult, time);
+    body.frequency.exponentialRampToValueAtTime(155 * pitchMult, time + 0.055);
     const bg = ctx.createGain();
-    bg.gain.setValueAtTime(0.16 * track.drumVol * (0.75 + 0.35 * this._intensity), time);
-    bg.gain.exponentialRampToValueAtTime(0.001, time + 0.08);
+    bg.gain.setValueAtTime(0.18 * track.drumVol * (0.8 + 0.3 * this._intensity) * velMult, time);
+    bg.gain.exponentialRampToValueAtTime(0.001, time + 0.075);
     body.connect(bg);
     bg.connect(this._bus);
     body.start(time);
-    body.stop(time + 0.1);
+    body.stop(time + 0.09);
   }
 
-  _playHat(time, track, volMult = 1) {
+  _playHat(time, track, volMult = 1, open = false) {
     const ctx = this._ctx;
-    const len = Math.floor(ctx.sampleRate * 0.03);
+    const durSec = open ? 0.065 : 0.026;
+    const len = Math.floor(ctx.sampleRate * durSec);
     const buf = ctx.createBuffer(1, len, ctx.sampleRate);
     const data = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) data[i] = (this._rng() * 2 - 1) * Math.pow(1 - i / len, 2);
+    for (let i = 0; i < len; i++) data[i] = (this._rng() * 2 - 1) * Math.pow(1 - i / len, 1.8);
     const src = ctx.createBufferSource();
     src.buffer = buf;
     const hp = ctx.createBiquadFilter();
     hp.type = 'highpass';
-    hp.frequency.value = 6000;
+    hp.frequency.value = 6400;
     const g = ctx.createGain();
-    g.gain.value = 0.09 * track.drumVol * (0.75 + 0.35 * this._intensity) * volMult;
+    g.gain.value = 0.095 * track.drumVol * (0.8 + 0.3 * this._intensity) * volMult;
     src.connect(hp);
     hp.connect(g);
     g.connect(this._bus);
     src.start(time);
-    src.stop(time + len / ctx.sampleRate + 0.02); // AUDIT R66: stop explícito
+    src.stop(time + len / ctx.sampleRate + 0.02);
+  }
+
+  _playCrash(time, track) {
+    const ctx = this._ctx;
+    const durSec = 0.38;
+    const len = Math.floor(ctx.sampleRate * durSec);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = (this._rng() * 2 - 1) * Math.pow(1 - i / len, 1.4);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 4800;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.11 * track.drumVol, time);
+    g.gain.exponentialRampToValueAtTime(0.001, time + durSec);
+    src.connect(hp);
+    hp.connect(g);
+    g.connect(this._bus);
+    src.start(time);
+    src.stop(time + durSec + 0.02);
   }
 
   /* ---------------- Offline render (QA) ---------------- */
 
-  /**
-   * Schedules a whole track into an OfflineAudioContext using the
-   * exact same synthesis code as the real-time scheduler — with the
-   * same seed, renders are deterministic. Vinyl texture and crackles
-   * are included so the QA WAV matches the in-game sound.
-   * @param {OfflineAudioContext} ctx
-   * @param {AudioNode} output
-   * @param {string} trackName
-   * @param {number} [seed]
-   * @param {number} [cycles] Override the track's cycle count.
-   */
   static renderOffline(ctx, output, trackName, seed = 12345, cycles = null) {
     const track = TRACKS.find((t) => t.name === trackName) || TRACKS[0];
     const engine = new MusicEngine(ctx, { output, volume: 1, seed });
     engine._currentTrack = track;
     engine._playing = true;
-    engine._bus.gain.value = 1; // offline: no fade-in (pitfall)
+    engine._bus.gain.value = 1;
     const stepDur = engine._stepDuration();
     const cyc = cycles ?? track.cycles;
     const totalSteps = track.chords.length * track.barsPerChord * 16 * cyc;
-    const totalDur = totalSteps * stepDur;
     for (let step = 0; step < totalSteps; step++) {
       engine._scheduleStep(step, step * stepDur);
     }
-    // Vinyl texture + deterministic crackles (same code as real time).
     engine._ensureVinyl();
-    for (let t = 0.5; t < totalDur - 0.15; t += 0.9) {
-      if (engine._rng() < 0.4) engine._playCrackle(t);
-    }
     return engine;
   }
 
-  /** Duration of a track (seconds) for sizing offline contexts. */
   static trackDuration(name, cycles = 1) {
     const track = TRACKS.find((t) => t.name === name) || TRACKS[0];
     const stepDur = 60 / track.bpm / STEPS_PER_BEAT;
@@ -827,4 +1089,4 @@ export class MusicEngine {
   }
 }
 
-export { TRACKS };
+export { TRACKS, MENU_TRACK, STAR_TRACK };

@@ -17,6 +17,7 @@ const ITEM_ICONS = {
   mushroom: '🍄',
   shell: '🐢',
   red_shell: '🐢', // styled red via .sk3d-item-red
+  blue_shell: '🐚',
   banana: '🍌',
   star: '⭐',
   lightning: '⚡',
@@ -27,6 +28,7 @@ const ITEM_NAMES = {
   mushroom: 'Mushroom',
   shell: 'Green Shell',
   red_shell: 'Red Shell',
+  blue_shell: 'Spiny Shell',
   banana: 'Banana',
   star: 'Star',
   lightning: 'Lightning',

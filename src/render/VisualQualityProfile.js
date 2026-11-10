@@ -17,6 +17,11 @@ export const QUALITY_PROFILES = Object.freeze({
     shadows: true, bloom: true, colorGrade: false, vignette: true,
     particleDensity: 0.6, foliageDensity: 0.6,
   }),
+  tv: Object.freeze({
+    name: 'tv', maxPixelRatio: 1.0, textureCap: 512, shadowMapSize: 1024,
+    shadows: true, bloom: false, colorGrade: true, vignette: true,
+    particleDensity: 0.7, foliageDensity: 0.75,
+  }),
   high: Object.freeze({
     name: 'high', maxPixelRatio: 2, textureCap: 1024, shadowMapSize: 2048,
     shadows: true, bloom: true, colorGrade: true, vignette: true,
@@ -37,6 +42,14 @@ function queryOverride() {
 function isCoarse() {
   return !!window.matchMedia?.('(pointer: coarse)').matches ||
     (navigator.maxTouchPoints || 0) > 0;
+}
+
+export function isSmartTVBrowser() {
+  if (typeof window === 'undefined') return false;
+  const qs = new URLSearchParams(window.location?.search || '');
+  if (qs.get('tv') === '1' || qs.get('quality') === 'tv') return true;
+  const ua = typeof navigator !== 'undefined' ? (navigator.userAgent || '') : '';
+  return /Tizen|SmartTV|SMART-TV|SamsungBrowser.*TV|Web0S|NetCast|VIDAA|Bravia|HbbTV/i.test(ua);
 }
 
 function glInfo(renderer) {
@@ -66,14 +79,16 @@ export function createQualityProfile(renderer) {
   const memory = Number(navigator.deviceMemory) || 0;
   const cores = Number(navigator.hardwareConcurrency) || 0;
   let name = queryOverride();
+  const smartTv = isSmartTVBrowser();
   if (!name) {
-    if (info.software || (coarse && ((memory && memory <= 4) || (cores && cores <= 4)))) name = 'low';
+    if (smartTv) name = 'tv';
+    else if (info.software || (coarse && ((memory && memory <= 4) || (cores && cores <= 4)))) name = 'low';
     else if (coarse) name = 'medium';
     else if (/RTX|Radeon RX|Arc A|Apple M[0-9]/i.test(info.renderer)) name = 'ultra';
     else name = 'high';
   }
   const base = QUALITY_PROFILES[name] || QUALITY_PROFILES.high;
-  const profile = { ...base, info, coarse, memory, cores };
+  const profile = { ...base, info, coarse, memory, cores, smartTv };
   if (info.software) {
     profile.bloom = false;
     profile.colorGrade = false;
