@@ -3412,3 +3412,85 @@ body.zario-splitscreen .sk3d-hud { opacity:.3; pointer-events:none; }
   .zario-switch-qr-box { width:100%; }
   .zario-switch-steps { grid-column:auto; }
 }
+
+
+/* QA 2026-11-11: controller diagnostics and immersive launcher.
+   Keep these in the central console so they never cover steering/action pads. */
+.zc-tools-row { display:grid; grid-template-columns:1fr 1fr; gap:4px; width:100%; flex:none; }
+.zc-tools-btn { height:clamp(22px,5.8vh,28px); font-size:clamp(9px,1.7vh,11px); border-color:#38bdf888; }
+.zc-linked #zc-btn-fullscreen { border-color:#4ade80; }
+.zc-debug-overlay {
+  position:absolute; inset:0; z-index:999; display:grid;
+  place-items:center; padding:clamp(8px,3vh,20px);
+  background:rgba(2,6,23,.92); touch-action:pan-y;
+}
+.zc-debug-overlay[hidden] { display:none!important; }
+.zc-debug-card {
+  width:min(100%,760px); height:100%; min-height:0;
+  display:flex; flex-direction:column; gap:6px; border-radius:12px;
+  border:2px solid #38bdf8; padding:10px; background:#0f172a; color:#f8fafc;
+}
+.zc-debug-header { display:flex; gap:10px; align-items:center; justify-content:space-between; }
+.zc-debug-card button {
+  min-height:32px; padding:4px 12px; border-radius:8px;
+  color:#f8fafc; background:#235c85; border:1px solid #90e0ef;
+  font-weight:800; cursor:pointer;
+}
+.zc-debug-card pre {
+  flex:1; min-height:0; margin:0; overflow:auto; touch-action:pan-y;
+  white-space:pre-wrap; overflow-wrap:anywhere; color:#c2e5ff;
+  font:clamp(10px,1.9vh,13px)/1.35 ui-monospace,monospace;
+}
+
+/* Stop RACERS / TRACKS cards and their buttons overlapping on phones. */
+@media (pointer:coarse) and (max-width:900px) {
+  .sk3d-screen { padding:6px; min-width:0; min-height:0; }
+  .sk3d-screen-card {
+    width:min(100%,740px); min-width:0;
+    max-height:calc(100dvh - 12px); min-height:0;
+    padding:8px 10px; gap:7px; overflow-y:auto; overscroll-behavior:contain;
+  }
+  .sk3d-screen-head { gap:5px; flex:none; min-width:0; }
+  .sk3d-screen-title { min-width:0; font-size:clamp(14px,3.6vh,20px); line-height:1.1; }
+  .sk3d-back-btn { min-height:35px; padding:4px 9px; font-size:12px; }
+  .sk3d-carousel { min-width:0; max-width:100%; gap:5px; }
+  .sk3d-cards-strip { min-width:0; max-width:100%; gap:8px; scroll-padding-inline:6px; }
+  .sk3d-char-card { flex-basis:min(240px,65vw); padding:8px 10px; }
+  .sk3d-track-card { flex-basis:min(280px,70vw); padding:8px 10px; }
+  .sk3d-arrow-btn { flex:0 0 36px; width:36px; min-width:36px; height:40px; min-height:40px; }
+  .sk3d-track-name { font-size:clamp(13px,3vh,17px); }
+  .sk3d-track-desc { font-size:clamp(10px,2.4vh,12px); }
+  .sk3d-select-btn { flex:none; min-height:39px; padding:5px 24px; font-size:clamp(12px,3vh,16px); }
+}
+@media (pointer:coarse) and (orientation:landscape) and (max-height:500px) {
+  .sk3d-screen-card { overflow:hidden; height:calc(100dvh - 12px); }
+  .sk3d-screen-head { min-height:35px; }
+  .sk3d-carousel { flex:1 1 0; min-height:0; overflow:hidden; }
+  .sk3d-cards-strip { height:100%; min-height:0; align-items:stretch; padding-block:2px; }
+  .sk3d-char-card, .sk3d-track-card {
+    flex-basis:min(220px,40vw); min-height:0; gap:3px;
+    overflow:hidden; justify-content:center; padding:5px 8px;
+  }
+  .sk3d-char-canvas, .sk3d-track-canvas {
+    height:min(22vh,98px)!important; max-height:98px!important;
+    min-height:0; width:auto; max-width:100%; object-fit:contain;
+  }
+  .sk3d-track-desc { display:none; }
+  .sk3d-picked-badge { font-size:10px; padding:2px 7px; }
+  .sk3d-screen-title { font-size:clamp(13px,3.5vh,18px); }
+  .sk3d-select-btn { min-height:32px; padding:3px 22px; }
+}
+
+/* Export is adjacent to selection rather than a third row that squashes phones. */
+.sk3d-racer-actions { display:flex; justify-content:center; align-items:stretch; gap:8px; min-width:0; flex:none; }
+.sk3d-racer-actions .sk3d-select-btn { flex:1 1 auto; min-width:0; margin:0; }
+.sk3d-racer-export {
+  flex:0 0 auto; min-height:44px; padding:7px 15px; font-size:clamp(11px,2.5vh,15px);
+  color:#fff; background:#2563a1; border:2px solid #173859; border-radius:12px;
+}
+@media (max-height:500px) and (pointer:coarse) {
+  .sk3d-racer-actions { gap:5px; }
+  .sk3d-racer-actions .sk3d-select-btn, .sk3d-racer-export {
+    min-height:32px!important; padding:3px 8px!important; font-size:11px!important;
+  }
+}

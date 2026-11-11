@@ -18,6 +18,13 @@ import { zarioLogger } from '../game/ZarioLogger.js';
 
 const ROOM_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const PEER_PREFIX = 'zariokart-tv-2026-';
+// The /api relay is a Vite-only endpoint. GitHub Pages returns a 404 at
+// 30 Hz otherwise; sending those requests wastes phone battery and bandwidth.
+function hasLocalRelay() {
+  if (typeof location === 'undefined') return false;
+  const host = String(location.hostname || '');
+  return /^(localhost|127\.0\.0\.1|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host);
+}
 
 export function generateRoomCode(len = 4) {
   let code = '';
@@ -356,7 +363,17 @@ function loadPeerJS() {
  */
 export class SwitchHostBridge {
   constructor(options = {}) {
-    this.roomCode = normalizeRoomCode(options.roomCode) || generateRoomCode(4);
+    let storedRoom = '';
+    if (options.storageKey) {
+      try { storedRoom = normalizeRoomCode(localStorage.getItem(options.storageKey)); } catch {}
+    }
+    this.roomCode = normalizeRoomCode(options.roomCode) || storedRoom || generateRoomCode(4);
+    if (options.storageKey) {
+      try { localStorage.setItem(options.storageKey, this.roomCode); } catch {}
+    }
+    this._diag = { startedAt: new Date().toISOString(), events: [], packets: 0,
+      gyroPackets: 0, lastGyro: null, lastPacketAgeMs: null };
+    this._recordDiag('host-created', { room: this.roomCode });
     this.connected = false;
     this.transport = 'waiting';
     this.lastPacketAt = 0;
@@ -387,6 +404,22 @@ export class SwitchHostBridge {
     this._started = false;
   }
 
+  _recordDiag(type, fields = {}) {
+    if (!this._diag) return;
+    this._diag.events.push({ at: new Date().toISOString(), type, ...fields });
+    if (this._diag.events.length > 140) this._diag.events.shift();
+  }
+
+  diagnosticReport() {
+    return {
+      ...this.getStatus(),
+      events: this._diag.events.slice(),
+      packetsReceived: this._diag.packets,
+      gyroPacketsReceived: this._diag.gyroPackets,
+      lastGyro: this._diag.lastGyro,
+    };
+  }
+
   start() {
     if (this._started) return this;
     this._started = true;
@@ -407,7 +440,7 @@ export class SwitchHostBridge {
     }
 
     // 2. Local Vite LAN Relay polling + LAN IP discovery
-    if (typeof window !== 'undefined' && typeof fetch !== 'undefined') {
+    if (hasLocalRelay() && typeof fetch !== 'undefined') {
       this._discoverLanInfo();
       this._startLanPolling();
     }
@@ -520,6 +553,7 @@ export class SwitchHostBridge {
     this.connected = true;
     this.transport = transportName || this.transport;
     this.lastPacketAt = now;
+    if (!wasConnected) this._recordDiag('phone-connected', { transport: this.transport });
 
     if (packet.type === 'controller_hello') {
       if (!wasConnected) {
@@ -581,6 +615,22 @@ export class SwitchHostBridge {
       tiltDeg: Number(packet.tiltDeg) || 0,
     };
     this.lastSeq = this.latestState.seq;
+    this._diag.packets++;
+    if (this.latestState.gyroEnabled) this._diag.gyroPackets++;
+    const gyroStatus = {
+      enabled: !!packet.gyroEnabled,
+      sensorState: String(packet.sensorState || 'unknown').slice(0, 40),
+      sensorAgeMs: Number.isFinite(packet.sensorAgeMs) ? Math.round(packet.sensorAgeMs) : null,
+      permissionState: String(packet.permissionState || 'unknown').slice(0, 40),
+      eventCount: Number(packet.sensorEventCount) || 0,
+      screenAngle: Number(packet.screenAngle) || 0,
+      tiltDeg: Number(packet.tiltDeg) || 0,
+    };
+    if (!this._diag.lastGyro || this._diag.lastGyro.sensorState !== gyroStatus.sensorState ||
+        this._diag.lastGyro.permissionState !== gyroStatus.permissionState) {
+      this._recordDiag('gyro-status', gyroStatus);
+    }
+    this._diag.lastGyro = gyroStatus;
 
     const latencyMs = packet.ts ? Math.max(0, Math.min(999, now - Number(packet.ts))) : 0;
     zarioLogger.recordControllerPacket(latencyMs);
@@ -603,6 +653,7 @@ export class SwitchHostBridge {
     if (!this.connected) return null;
     if (Date.now() - this.lastPacketAt > 3500) {
       this.connected = false;
+      this._recordDiag('phone-timeout', { msSinceLastPacket: Date.now() - this.lastPacketAt });
       this._emitStatus();
       return null;
     }
@@ -683,6 +734,9 @@ export class SwitchHostBridge {
       pairingUrl: this.getPairingUrl(),
       lanOrigins: this.lanOrigins,
       latestState: this.latestState,
+      lastPacketAgeMs: this.lastPacketAt ? Date.now() - this.lastPacketAt : null,
+      packetCount: this._diag.packets,
+      gyroStatus: this._diag.lastGyro,
     };
   }
 }
@@ -713,12 +767,24 @@ export class SwitchClientBridge {
     this._conn = null;
     this._pollTimer = null;
     this._started = false;
+    this._diag = { startedAt: new Date().toISOString(), events: [] };
+  }
+
+  _recordDiag(type, fields = {}) {
+    this._diag.events.push({at: new Date().toISOString(), type, ...fields});
+    if (this._diag.events.length > 140) this._diag.events.shift();
+  }
+  diagnosticReport() {
+    return { roomCode: this.roomCode, connected: this.connected,
+      transport: this.transport, seq: this.seq,
+      sensorEvents: this._lastSensorEventCount || 0,
+      events: this._diag.events.slice() };
   }
 
   start() {
     if (this._started) return this;
     this._started = true;
-
+    this._recordDiag('client-start', {room: this.roomCode});
     if (typeof BroadcastChannel !== 'undefined') {
       try {
         this._bc = new BroadcastChannel('zario-switch-bridge');
@@ -738,7 +804,7 @@ export class SwitchClientBridge {
       } catch { /* ignore */ }
     }
 
-    if (typeof window !== 'undefined' && typeof fetch !== 'undefined') {
+    if (hasLocalRelay() && typeof fetch !== 'undefined') {
       this._startLanTelemetryPoll();
     }
 
@@ -754,6 +820,7 @@ export class SwitchClientBridge {
             const conn = peer.connect(targetId, { reliable: false });
             this._conn = conn;
             conn.on('open', () => {
+              this._recordDiag('peer-open', { room: this.roomCode });
               this.connected = true;
               this.transport = 'WebRTC-PeerJS';
               conn.send({ type: 'controller_hello', roomCode: this.roomCode, ts: Date.now() });
@@ -766,6 +833,7 @@ export class SwitchClientBridge {
               if (this._conn !== conn) return;
               this.connected = false;
               this.transport = 'reconnecting';
+              this._recordDiag('peer-reconnecting', {room: this.roomCode});
               this.onStatus?.({ connected: false, transport: this.transport, roomCode: this.roomCode });
               if (this._started) setTimeout(connect, 1100);
             };
@@ -773,6 +841,9 @@ export class SwitchClientBridge {
             conn.on('error', reconnect);
           };
           peer.on('open', connect);
+          peer.on('error', (error) => {
+            this._recordDiag('peer-error', {kind: String(error?.type || error?.message || 'unknown').slice(0,80)});
+          });
           peer.on('disconnected', () => {
             if (this._started && !peer.destroyed) try { peer.reconnect(); } catch {}
           });
@@ -785,6 +856,7 @@ export class SwitchClientBridge {
 
   setRoomCode(newCode) {
     this.roomCode = normalizeRoomCode(newCode) || this.roomCode;
+    this._recordDiag('room-changed', {room: this.roomCode});
     this.stop();
     this.start();
   }
@@ -865,7 +937,13 @@ export class SwitchClientBridge {
       menuBack: !!inputState.menuBack,
       gyroEnabled: !!inputState.gyroEnabled,
       tiltDeg: Number(inputState.tiltDeg) || 0,
+      sensorState: String(inputState.sensorState || 'unknown').slice(0,40),
+      permissionState: String(inputState.permissionState || 'unknown').slice(0,40),
+      sensorAgeMs: Number.isFinite(inputState.sensorAgeMs) ? Math.round(inputState.sensorAgeMs) : -1,
+      sensorEventCount: Number(inputState.sensorEventCount) || 0,
+      screenAngle: Number(inputState.screenAngle) || 0,
     };
+    this._lastSensorEventCount = packet.sensorEventCount;
 
     if (this._bc) {
       try { this._bc.postMessage(packet); } catch { /* ignore */ }
@@ -873,7 +951,7 @@ export class SwitchClientBridge {
     if (this._conn && this._conn.open) {
       try { this._conn.send(packet); } catch { /* ignore */ }
     }
-    if (typeof fetch !== 'undefined') {
+    if (hasLocalRelay() && typeof fetch !== 'undefined') {
       fetch('/api/switch-bridge/push', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -964,6 +1042,20 @@ export function openTVPairingModal(hostBridge, hostBridge2 = window.__zarioSwitc
     modal.className = 'zario-switch-modal-backdrop';
     document.body.appendChild(modal);
   }
+
+  const refreshConnectionLabels = () => {
+    for (const [index, bridge] of [[0,hostBridge], [1,hostBridge2]]) {
+      if (!bridge) continue;
+      const status = bridge.getStatus();
+      const label = modal.querySelectorAll('.zario-switch-conn-status')[index];
+      if (!label) continue;
+      label.classList.toggle('is-connected', status.connected);
+      label.classList.toggle('is-waiting', !status.connected);
+      label.textContent = status.connected
+        ? '✅ P' + (index + 1) + ' Connected (' + status.transport + ')'
+        : '📡 P' + (index + 1) + ' waiting for phone...';
+    }
+  };
 
   const renderModalContent = () => {
     const status = hostBridge.getStatus();
@@ -1059,10 +1151,10 @@ export function openTVPairingModal(hostBridge, hostBridge2 = window.__zarioSwitc
   if (!modal._subscribed) {
     modal._subscribed = true;
     hostBridge.onStatusChange(() => {
-      if (!modal.hidden) renderModalContent();
+      if (!modal.hidden) refreshConnectionLabels(); // preserve controller focus
     });
     hostBridge2?.onStatusChange(() => {
-      if (!modal.hidden) renderModalContent();
+      if (!modal.hidden) refreshConnectionLabels(); // no 1 Hz DOM teardown
     });
   }
 }

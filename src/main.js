@@ -331,6 +331,13 @@ if (advancedSettings) {
   exportRace.style.cssText='align-self:center;min-height:42px;padding:7px 17px;background:#e0eefa;color:#1c3761;border:2px solid #5782ab;font:800 12px system-ui;border-radius:999px';
   exportRace.addEventListener('click',()=>window.__zarioDiagnostics.download());
   advancedSettings.append(exportRace);
+  const exportBridge = document.createElement('button');
+  exportBridge.type = 'button';
+  exportBridge.className = 'sk3d-btn zario-export-bridge';
+  exportBridge.textContent = '📡 EXPORT CONTROLLER / GYRO DEBUG';
+  exportBridge.style.cssText = exportRace.style.cssText;
+  exportBridge.addEventListener('click', () => window.__zarioDownloadBridgeReport?.());
+  advancedSettings.append(exportBridge);
 }
 // No floating gyroscope/grip buttons during races: reserve the lower
 // 30% for the steering and item buttons alone.
@@ -341,9 +348,11 @@ onStateChange((state) => document.body.classList.toggle(
 ));
 window.__zarioControlStatus = () => zarioControls.status();
 window.__zarioPerformance = () => renderer.userData.qualityReport();
-const switchHost = IS_CONTROLLER_CLIENT ? null : new SwitchHostBridge().start();
+// Stable pairing IDs survive track changes and game option reloads. Phone
+// PeerJS clients then reconnect to the SAME room without re-scanning QR codes.
+const switchHost = IS_CONTROLLER_CLIENT ? null : new SwitchHostBridge({storageKey:'zario.host.room.p1'}).start();
 // A separate room prevents P2 packets overwriting P1; each phone gets its own PeerJS ID.
-const switchHost2 = IS_CONTROLLER_CLIENT ? null : new SwitchHostBridge().start();
+const switchHost2 = IS_CONTROLLER_CLIENT ? null : new SwitchHostBridge({storageKey:'zario.host.room.p2'}).start();
 let splitScreenEnabled = false;
 try { splitScreenEnabled = localStorage.getItem('zario.split2.v1') === '1'; } catch {}
 window.__zarioSetSplitScreen = (enabled) => {
@@ -354,6 +363,23 @@ window.__zarioSetSplitScreen = (enabled) => {
 window.__zarioSwitchHost = switchHost;
 window.__zarioSwitchHost2 = switchHost2;
 window.__zarioOpenSwitchModal = () => openTVPairingModal(switchHost, switchHost2);
+window.__zarioBridgeReport = () => ({
+  createdAt: new Date().toISOString(),
+  gameState: getState(),
+  trackId: TRACK_ID,
+  p1: switchHost?.diagnosticReport(),
+  p2: switchHost2?.diagnosticReport(),
+  localTilt: zarioControls.status(),
+  race: raceDiagnostics.snapshot(),
+});
+window.__zarioDownloadBridgeReport = () => {
+  const json = JSON.stringify(window.__zarioBridgeReport(), null, 2);
+  const url = URL.createObjectURL(new Blob([json], {type:'application/json'}));
+  const a = document.createElement('a');
+  a.href = url; a.download = 'zario-bridge-debug-' + TRACK_ID + '.json';
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+};
 if (!IS_CONTROLLER_CLIENT) {
   initSamsungTVAdaptation(switchHost);
 }
@@ -874,22 +900,39 @@ function navigatePhoneMenu(packet) {
   const scope = openModal ? modal : menu.root;
   const visible = el => !el.disabled && !el.closest('.sk3d-hidden,[hidden]') &&
     el.getClientRects().length > 0;
-  const items = [...scope.querySelectorAll('button, [role="radio"]')].filter(visible);
+
+  const items = [...scope.querySelectorAll('button, [role="radio"], input')].filter(visible);
+  const inRacers = !openModal && !menu.screenRacers.classList.contains('sk3d-hidden');
+  const inTracks = !openModal && !menu.screenTracks.classList.contains('sk3d-hidden');
+  const settingsPanel = menu.root.querySelector('#zario-settings-panel');
+  const settingsOpen = !openModal && settingsPanel && !settingsPanel.classList.contains('sk3d-hidden');
   if (packet.menuBack) {
     if (openModal) modal.hidden = true;
+    else if (settingsOpen) menu.closeSettings?.();
     else menu.closeScreens?.();
     return;
   }
-  if (packet.menuX || packet.menuY) {
+  if (packet.menuX && (inRacers || inTracks)) {
+    if (inRacers) {
+      menu.stepChar(packet.menuX);
+      menu.charSelect?.focus?.({preventScroll:true});
+    } else {
+      menu.stepTrack(packet.menuX);
+      menu.trackSelect?.focus?.({preventScroll:true});
+    }
+  } else if (packet.menuX || packet.menuY) {
     const dir = packet.menuX || packet.menuY;
     const index = items.indexOf(document.activeElement);
     const next = index < 0 ? (dir < 0 ? items.length - 1 : 0) :
       (index + (dir < 0 ? -1 : 1) + items.length) % items.length;
-    items[next]?.focus?.();
+    items[next]?.focus?.({preventScroll:true});
+    items[next]?.scrollIntoView?.({block:'nearest',inline:'nearest'});
   }
   if (packet.menuConfirm) {
     const focused = document.activeElement;
-    if (items.includes(focused)) focused.click();
+    if (inRacers) menu.charSelect?.click();
+    else if (inTracks) menu.trackSelect?.click();
+    else if (items.includes(focused)) focused.click();
     else (openModal ? items[0] : menu.startBtn)?.click?.();
   }
   if (packet.startRace && !openModal) {
@@ -2120,6 +2163,34 @@ window.__sk3d = {
       countdownT = COUNTDOWN_STEP * COUNTDOWN_MARKS.length;
     }
   },
+  // CI-only deterministic whole-track driving. The existing DEMO AI controls
+  // the player, but physics advances much faster than real time while the RAF
+  // loop is stopped. Render only when the test requests a screenshot.
+  qaStep: (dt = 1 / 30, draw = false) => {
+    if (!DEMO || !new URLSearchParams(location.search).has('audit'))
+      throw new Error('qaStep requires ?demo=1&audit=1');
+    if (getState() !== STATES.RACE || !playerKart)
+      return {state:getState(), finished:getState()===STATES.FINISHED};
+    const step = Math.min(1/30, Math.max(1/120, Number(dt) || 1/30));
+    raceManager.update(step);
+    raceDiagnostics.tick({
+      dt:step, player:playerKart, frameMs:step*1000,
+      audioState:audio.diagnostics().state,
+      pixelRatio:renderer.getPixelRatio(),
+      calls:renderer.info.render.calls,
+    });
+    if (draw) {
+      updateCamera(step, raceManager.elapsed);
+      postfx.render(step);
+    }
+    const st = playerKart.state;
+    return {state:getState(), phase:raceManager.phase,
+      lap:st.lap, progress:st.progress01,
+      position:{x:st.position.x,y:st.position.y,z:st.position.z},
+      speed:st.speed, seconds:raceDiagnostics._clock,
+      finished:!!playerKart.finished};
+  },
+
   settings, // QA: current difficulty/assist settings { cc, autoAccel, steerAssist }
   setPlayerColor, // QA: kart paint override (roster color validation)
   updateCamera, // QA hook: can be stubbed to freeze the chase camera

@@ -400,6 +400,13 @@ export class Menu {
     };
     toggle.addEventListener('click', () => showPanel(panel.classList.contains('sk3d-hidden')));
     close.addEventListener('click', () => showPanel(false));
+    // A physical touch can be intercepted before Safari's synthetic click,
+    // especially while this scrollable panel is above a WebGL canvas.
+    // Close immediately on pointerdown, then let click close idempotently.
+    close.addEventListener('pointerdown', (e) => {
+      if (e.cancelable) e.preventDefault();
+      showPanel(false);
+    });
     document.addEventListener('keydown', e => { if (e.key === 'Escape') showPanel(false); });
     this.closeSettings = () => showPanel(false);
   }
@@ -519,7 +526,10 @@ export class Menu {
             <div class="sk3d-cards-strip sk3d-char-strip" role="radiogroup" aria-label="Racers" tabindex="0">${charCards}</div>
             <button type="button" class="sk3d-btn sk3d-arrow-btn sk3d-char-next" aria-label="Next racer">›</button>
           </div>
-          <button type="button" class="sk3d-btn sk3d-primary-btn sk3d-select-btn sk3d-char-select">✅ SELECT</button>
+          <div class="sk3d-racer-actions">
+            <button type="button" class="sk3d-btn sk3d-primary-btn sk3d-select-btn sk3d-char-select">✅ SELECT</button>
+            <button type="button" class="sk3d-btn sk3d-racer-export" title="Download racer and kart as editable 3D GLB">⬇ 3D GLB</button>
+          </div>
         </div>
       </div>
 
@@ -573,6 +583,23 @@ export class Menu {
       card.addEventListener('click', () => { this.onSound('uiClick'); this.selectChar(card); });
     }
     this.charSelect.addEventListener('click', () => { this.onSound('uiSelect'); this.closeScreens(); });
+    this.root.querySelector('.sk3d-racer-export')?.addEventListener('click', async (event) => {
+      const button = event.currentTarget;
+      if (button.disabled) return;
+      button.disabled = true;
+      button.textContent = '⏳ EXPORTING...';
+      try {
+        await racerShowroom3D.downloadRacerGLB(this.selectedChar);
+        button.textContent = '✓ GLB SAVED';
+      } catch (error) {
+        console.error('[Zario Kart] racer GLB export failed', error);
+        button.textContent = '⚠ EXPORT ERROR';
+      }
+      setTimeout(() => {
+        button.disabled = false;
+        button.textContent = '⬇ 3D GLB';
+      }, 1800);
+    });
 
     // TRACKS screen: arrows flip, cards select, SELECT swaps the world.
     this.trackPrev.addEventListener('click', () => { this.onSound('uiClick'); this.stepTrack(-1); });

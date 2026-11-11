@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "audit:tracks": "node scripts/run-track-audit.mjs",
     "prebuild": "node scripts/prepare-source.mjs",
     "predev": "node scripts/prepare-source.mjs"
   },
