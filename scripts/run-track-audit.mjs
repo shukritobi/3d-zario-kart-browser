@@ -108,6 +108,8 @@ async function auditTrack(id) {
   } finally {
     await saveJson(join(dir,'complete-log.json'),log);
     const stripped={...log};
+    stripped.counts = log.diagnostics?.counts || {};
+    stripped.seconds = log.diagnostics?.seconds ?? null;
     delete stripped.diagnostics;
     delete stripped.bridge;
     run.tracks.push(stripped);
@@ -149,7 +151,7 @@ function summaryMarkdown() {
     '| Track | Result | Simulated time | Wall hits | Contacts | Ramps | Tricks | Slow frames |',
     '|---|---|---:|---:|---:|---:|---:|---:|'];
   for (const t of run.tracks) {
-    const d=t.finalState||{},c=t.diagnostics?.counts||{};
+    const d=t.finalState||{},c=t.counts||{};
     lines.push('| '+t.trackId+' '+t.trackName+' | '+t.status+' | '+
       (d.seconds==null?'?':d.seconds.toFixed(1)+'s')+' | '+(c.wall??'?')+' | '+
       (c.contact??'?')+' | '+(c.rampLaunch??'?')+' | '+(c.trick??'?')+' | '+(c.slowFrame??'?')+' |');
