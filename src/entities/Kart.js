@@ -189,6 +189,7 @@ export class Kart {
     this._bounceTimer = 0;
     this._startDir = new THREE.Vector3(0, 0, 1);
     this._trickArmed = false;
+    this._trickBtnWasDown = false;
 
     // Held-item bubble (audit v5 #1: a recolored orb isn't the item — MK8
     // shows the actual item). Mini toon meshes per type + orb fallback.
@@ -2309,7 +2310,10 @@ export class Kart {
     // Trick / Jump Boost (MK8D pillar): pressing drift/hop or throttle on a ramp
     // or mid-air arms a trick (360° flip or barrel roll) and grants an 850ms
     // Trick Boost upon landing.
-    if (this._airTime > 0.08 && (this._controls.throttle || this._controls.drift) && !this._trickArmed) {
+    // A ramp gives ordinary airtime. Tricks are optional: a NEW drift press while
+    // airborne (not auto-gas or a button held before takeoff) arms the spin.
+    const trickPressed = !!this._controls.drift;
+    if (this._airTime > 0.08 && trickPressed && !this._trickBtnWasDown && !this._trickArmed) {
       this._trickArmed = true;
       this._trickAnimT = 0.001;
       this._trickCount = (this._trickCount || 0) + 1;
@@ -2326,6 +2330,7 @@ export class Kart {
         });
       }
     }
+    this._trickBtnWasDown = trickPressed;
     if (this._trickAnimT && this._trickAnimT > 0) {
       this._trickAnimT += dt / 0.46;
       if (this._trickAnimT >= 1 || this._airTime <= 0.01) {
