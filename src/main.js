@@ -1643,8 +1643,18 @@ function renderWithOptionalSplit(dt) {
   renderer.setViewport(0, 0, fullW, fullH);
   const p1Label = splitLabels.querySelector('[data-p1]');
   const p2Label = splitLabels.querySelector('[data-p2]');
-  if (p1Label) p1Label.textContent = 'P1 · ' + Math.round(Math.abs(playerKart?.state.speed || 0) * 2.4) + ' km/h';
-  if (p2Label) p2Label.textContent = 'P2 · ' + Math.round(Math.abs(st.speed || 0) * 2.4) + ' km/h';
+  const splitHudLabel = (kart, label) => {
+    if (!kart?.state) return label;
+    const rank = Number(kart.position) || '?';
+    const lap = Math.min(CONFIG.game.totalLaps, Math.max(1, Number(kart.state.lap || kart.lap || 0) + 1));
+    const item = kart.heldItem || kart.heldItem2;
+    return label + ' · ' + rank + '/' + raceManager.karts.length +
+      ' · LAP ' + lap + '/' + CONFIG.game.totalLaps +
+      ' · ' + Math.round(Math.abs(kart.state.speed || 0) * 2.4) + ' km/h' +
+      (item ? ' · 🎁' : '');
+  };
+  if (p1Label) p1Label.textContent = splitHudLabel(playerKart, 'P1');
+  if (p2Label) p2Label.textContent = splitHudLabel(secondPlayerKart, 'P2');
   splitRenderedLastFrame = true;
 }
 
