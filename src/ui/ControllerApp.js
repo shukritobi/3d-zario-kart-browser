@@ -596,7 +596,7 @@ export function mountControllerApp(rootContainer) {
     state.permissionState = 'requesting';
     state.sensorState = 'waiting';
     debugEvent('gyro-request', {hasDeviceOrientation:typeof DeviceOrientationEvent !== 'undefined',
-      needsPermission:typeof DeviceOrientationEvent?.requestPermission === 'function'});
+      needsPermission:typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'});
     try {
       if (typeof DeviceOrientationEvent === 'undefined') throw Error('No motion sensor');
       if (typeof DeviceOrientationEvent.requestPermission === 'function') {
