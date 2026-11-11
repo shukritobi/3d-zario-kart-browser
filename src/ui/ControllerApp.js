@@ -75,6 +75,34 @@ export function mountControllerApp(rootContainer) {
     gyroZeroOffset: 0,
     rawTiltDeg: 0,
     tiltDeg: 0,
+    permissionState: 'not-requested',
+    sensorState: 'waiting',
+    sensorAgeMs: -1,
+    sensorEventCount: 0,
+    screenAngle: 0,
+  };
+  const debugEvents = [];
+  const debugEvent = (type, fields = {}) => {
+    debugEvents.push({ time: new Date().toISOString(), type, ...fields });
+    if (debugEvents.length > 150) debugEvents.shift();
+  };
+  const debugReport = () => ({
+    schema: 'zario-controller-debug-v1',
+    createdAt: new Date().toISOString(),
+    browser: navigator.userAgent,
+    screen: { width: innerWidth, height: innerHeight,
+      standalone: !!navigator.standalone || matchMedia('(display-mode:standalone)').matches },
+    connection: clientBridge.diagnosticReport(),
+    controller: {...state},
+    events: debugEvents.slice(),
+  };
+  const downloadDebug = () => {
+    const blob = new Blob([JSON.stringify(debugReport(),null,2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href=url; a.download='zario-phone-controller-debug.json';
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 10000);
   };
 
   const ui = document.createElement('div');
@@ -117,6 +145,10 @@ export function mountControllerApp(rootContainer) {
         </div>
       </div>
       <div class="zc-center-actions">
+        <div class="zc-tools-row">
+          <button type="button" class="zc-action-chip zc-tools-btn" id="zc-btn-fullscreen" title="Hide browser bars when supported">⛶ FULLSCREEN</button>
+          <button type="button" class="zc-action-chip zc-tools-btn" id="zc-btn-debug" title="Motion sensor and connection log">📋 DEBUG</button>
+        </div>
         <button type="button" class="zc-action-chip is-active" id="zc-btn-autogas">AUTO GAS: ON</button>
         <div class="zc-center-subrow">
           <button type="button" class="zc-action-chip" id="zc-btn-back">BACK</button>
@@ -134,6 +166,14 @@ export function mountControllerApp(rootContainer) {
           <button type="button" class="zc-pedal-btn zc-btn-x" id="zc-btn-item"><span class="zc-btn-letter">X</span><span class="zc-btn-sub">ITEM</span></button>
           <button type="button" class="zc-pedal-btn zc-btn-a" id="zc-btn-gas"><span class="zc-btn-letter">A</span><span class="zc-btn-sub">GAS</span></button>
         </div>
+      </div>
+    </div>
+    <div class="zc-debug-overlay" id="zc-debug-overlay" hidden>
+      <div class="zc-debug-card">
+        <div class="zc-debug-header"><strong>📡 CONTROLLER DEBUG</strong>
+          <button type="button" id="zc-debug-close">✕ CLOSE</button></div>
+        <pre id="zc-debug-text" aria-live="polite"></pre>
+        <button type="button" id="zc-debug-download">⬇ DOWNLOAD JSON LOG</button>
       </div>
     </div>
   `;
@@ -222,6 +262,9 @@ export function mountControllerApp(rootContainer) {
         pill.textContent = st.connected ? `🟢 Linked (${st.transport})` : '🟡 Linking TV...';
         pill.classList.toggle('is-online', !!st.connected);
       }
+      debugEvent(st.connected ? 'connected' : 'connecting', {transport:st.transport});
+      if (st.connected) ui.classList.add('zc-linked');
+      else ui.classList.remove('zc-linked');
     },
     onTelemetry: (tele) => {
       const rankEl = ui.querySelector('#zc-tele-rank');
@@ -254,6 +297,7 @@ export function mountControllerApp(rootContainer) {
   const pairRoom = () => {
     const code = normalizeRoomCode(roomInput?.value);
     if (code) {
+      debugEvent('pair-click', {room:code});
       roomInput.value = code;
       roomInput.blur();
       clientBridge.setRoomCode(code);
@@ -266,6 +310,47 @@ export function mountControllerApp(rootContainer) {
     e.preventDefault();
     pairRoom();
   });
+
+  // Fullscreen needs a user gesture. iPhone Safari does not expose element
+  // fullscreen; Home Screen web-app mode is the closest supported option.
+  const immersiveBtn = ui.querySelector('#zc-btn-fullscreen');
+  const refreshImmersiveButton = () => {
+    if (!immersiveBtn) return;
+    const standalone = !!navigator.standalone || matchMedia('(display-mode:standalone)').matches;
+    immersiveBtn.textContent = document.fullscreenElement || standalone ? '✓ IMMERSIVE' :
+      document.fullscreenEnabled ? '⛶ FULLSCREEN' : '⊞ HOME APP';
+  };
+  immersiveBtn?.addEventListener('click', async () => {
+    debugEvent('fullscreen-request', {supported:!!document.fullscreenEnabled});
+    try {
+      if (document.fullscreenEnabled && ui.requestFullscreen) {
+        await ui.requestFullscreen({navigationUI:'hide'});
+        debugEvent('fullscreen-entered');
+      } else {
+        alert('iPhone Safari: use Share → Add to Home Screen, then launch Zario Kart from your Home Screen. Android: Fullscreen works here when supported. Browser fullscreen cannot block phone notifications; enable Do Not Disturb for uninterrupted play.');
+      }
+    } catch (error) {
+      debugEvent('fullscreen-error', {reason:String(error?.message || error)});
+      alert('Fullscreen was blocked by this browser. Try Add to Home Screen instead.');
+    }
+    refreshImmersiveButton();
+  });
+  document.addEventListener('fullscreenchange', refreshImmersiveButton);
+  refreshImmersiveButton();
+
+  const debugOverlay = ui.querySelector('#zc-debug-overlay');
+  const debugText = ui.querySelector('#zc-debug-text');
+  const renderDebug = () => {
+    if (debugText) debugText.textContent = JSON.stringify(debugReport(), null, 2);
+  };
+  ui.querySelector('#zc-btn-debug')?.addEventListener('click', () => {
+    renderDebug(); if(debugOverlay) debugOverlay.hidden = false;
+  });
+  ui.querySelector('#zc-debug-close')?.addEventListener('click', () => {
+    if(debugOverlay) debugOverlay.hidden=true;
+  });
+  ui.querySelector('#zc-debug-download')?.addEventListener('click', downloadDebug);
+  window.__zarioControllerDebug = {report:debugReport, download:downloadDebug};
 
   // Bind hold button helper (supports multi-touch pointer + touch events without zoom/selection)
   const bindHoldButton = (selector, onChange) => {
@@ -441,6 +526,8 @@ export function mountControllerApp(rootContainer) {
   const recenterBtn = ui.querySelector('#zc-btn-recenter');
   let gyroNeutral = null;
   let lastSensorAt = 0;
+  let gyroRequestedAt = 0;
+  let sensorLogCheckpoint = 0;
   let lastGyroFlickAt = 0;
   let lastGyroFlickDir = 0;
   let gyroFlickArmed = true;
@@ -455,10 +542,21 @@ export function mountControllerApp(rootContainer) {
     return normalizeAngle(Number.isFinite(screenValue) ? screenValue : (Number.isFinite(legacy) ? legacy : 0));
   };
   const handleOrientation = (ev) => {
+    state.sensorEventCount++;
     const raw = screenTilt(ev, screenAngle());
-    if (raw === null) return;
+    if (raw === null) {
+      if (state.sensorEventCount === 1) debugEvent('orientation-empty', {beta:ev.beta,gamma:ev.gamma,alpha:ev.alpha});
+      state.sensorState = 'empty-sensor-values';
+      return;
+    }
     state.rawTiltDeg = raw;
+    state.sensorState = 'receiving';
+    state.screenAngle = screenAngle();
     lastSensorAt = performance.now();
+    if (state.sensorEventCount === 1 || state.sensorEventCount - sensorLogCheckpoint >= 120) {
+      debugEvent('sensor-sample', {beta:ev.beta,gamma:ev.gamma,alpha:ev.alpha,rawTiltDeg:raw,screenAngle:state.screenAngle});
+      sensorLogCheckpoint = state.sensorEventCount;
+    }
     if (!state.gyroEnabled) return;
     if (gyroNeutral === null) { gyroNeutral = raw; return; }
     const target = tiltToSteer(raw, gyroNeutral, {deadZone: 3.2, fullSteer: 32});
@@ -494,18 +592,30 @@ export function mountControllerApp(rootContainer) {
   async function enableGyro() {
     if (userDisabledGyro || permissionAttempted || state.gyroEnabled) return;
     permissionAttempted = true;
+    gyroRequestedAt = performance.now();
+    state.permissionState = 'requesting';
+    state.sensorState = 'waiting';
+    debugEvent('gyro-request', {hasDeviceOrientation:typeof DeviceOrientationEvent !== 'undefined',
+      needsPermission:typeof DeviceOrientationEvent?.requestPermission === 'function'});
     try {
       if (typeof DeviceOrientationEvent === 'undefined') throw Error('No motion sensor');
       if (typeof DeviceOrientationEvent.requestPermission === 'function') {
         // iOS requires this synchronous call from a real touch/pointer gesture.
         const result = await DeviceOrientationEvent.requestPermission();
+        state.permissionState = result;
+        debugEvent('gyro-permission-response', {result});
         if (result !== 'granted') throw Error('Motion access declined');
+      } else {
+        state.permissionState = 'not-required';
       }
       state.gyroEnabled = true;
       state.gyroSteer = 0;
       gyroNeutral = null;
       syncGyro();
-    } catch {
+    } catch (error) {
+      state.permissionState = 'failed';
+      state.sensorState = 'unavailable';
+      debugEvent('gyro-unavailable', {reason:String(error?.message || error)});
       state.gyroEnabled = false;
       state.gyroSteer = 0;
       userDisabledGyro = true;
@@ -528,6 +638,8 @@ export function mountControllerApp(rootContainer) {
       state.gyroEnabled = false;
       state.gyroSteer = 0;
       try { localStorage.setItem('zario.phone.gyro.v2', 'off'); } catch {}
+      state.permissionState = 'disabled-by-user';
+      debugEvent('gyro-disabled');
       syncGyro();
     } else {
       userDisabledGyro = false;
@@ -552,6 +664,17 @@ export function mountControllerApp(rootContainer) {
   const steerReadout = ui.querySelector('#zc-steer-readout');
 
   const timer = setInterval(() => {
+    state.sensorAgeMs = lastSensorAt ? Math.round(performance.now()-lastSensorAt) : -1;
+    if (state.gyroEnabled && state.sensorAgeMs > 1800 && state.sensorAgeMs !== -1 &&
+        state.sensorState === 'receiving') {
+      state.sensorState = 'stale';
+      debugEvent('gyro-sensor-stale', {ageMs:state.sensorAgeMs});
+    }
+    if (state.gyroEnabled && !lastSensorAt && performance.now()-gyroRequestedAt > 2000 &&
+        state.sensorState === 'waiting') {
+      state.sensorState = 'no-events';
+      debugEvent('gyro-no-events', {waitedMs:Math.round(performance.now()-gyroRequestedAt)});
+    }
     const dpadSteer = (rightBtnHeld ? 1 : 0) - (leftBtnHeld ? 1 : 0);
     const steerFromStick = state.mode === 'analog' ? state.stickSteer : 0;
     const steerFromGyro = state.gyroEnabled && performance.now() - lastSensorAt < 650 ? state.gyroSteer : 0;
@@ -568,7 +691,10 @@ export function mountControllerApp(rootContainer) {
     state.drift = manualDrift || performance.now() < autoDriftUntil;
     if (wheelVisual) wheelVisual.style.transform = `translate(${(combinedSteer * 12).toFixed(1)}px, ${(axisY * 9).toFixed(1)}px)`;
     if (steerReadout) steerReadout.textContent =
-      `${state.gyroEnabled ? 'GYRO' : state.mode.toUpperCase()} · ${combinedSteer < -0.1 ? 'LEFT' : combinedSteer > 0.1 ? 'RIGHT' : 'CENTER'}`;
+      `${state.gyroEnabled && state.sensorState === 'receiving' ? 'GYRO' :
+        state.gyroEnabled ? 'GYRO NO DATA · TOUCH FALLBACK' : state.mode.toUpperCase()} · ${combinedSteer < -0.1 ? 'LEFT' : combinedSteer > 0.1 ? 'RIGHT' : 'CENTER'}`;
+    if (gyroBtn && state.gyroEnabled && state.sensorState === 'no-events')
+      gyroBtn.textContent = 'GYRO NO SENSOR';
     clientBridge.sendInput(state);
   }, 33);
   timer.unref?.();
@@ -584,6 +710,7 @@ export function mountControllerApp(rootContainer) {
       document.documentElement?.classList?.remove?.('zc-controller-html-lock');
       document.body?.classList?.remove?.('zc-controller-body-lock');
       clientBridge.stop();
+      if (window.__zarioControllerDebug?.report === debugReport) delete window.__zarioControllerDebug;
       ui.remove?.();
     },
   };
