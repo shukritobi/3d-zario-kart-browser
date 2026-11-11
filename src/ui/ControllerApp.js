@@ -335,7 +335,7 @@ export function mountControllerApp(rootContainer) {
     }
     refreshImmersiveButton();
   });
-  document.addEventListener('fullscreenchange', refreshImmersiveButton);
+  document.addEventListener?.('fullscreenchange', refreshImmersiveButton);
   refreshImmersiveButton();
 
   const debugOverlay = ui.querySelector('#zc-debug-overlay');
