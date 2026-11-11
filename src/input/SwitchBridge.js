@@ -551,7 +551,11 @@ export class SwitchHostBridge {
     if (!wasConnected) {
       zarioLogger.recordControllerConnect(this.roomCode, this.transport);
     }
-    this._emitStatus();
+    // Prevent the pairing QR/modal from rebuilding on every 30Hz packet.
+    if (!wasConnected || now - (this._lastStatusEmitAt || 0) > 1000) {
+      this._lastStatusEmitAt = now;
+      this._emitStatus();
+    }
   }
 
   /**
@@ -899,7 +903,7 @@ export function initSamsungTVAdaptation(hostBridge) {
 /**
  * Opens the Samsung TV + iPhone Nintendo Switch Controller Pairing Modal.
  */
-export function openTVPairingModal(hostBridge) {
+export function openTVPairingModal(hostBridge, hostBridge2 = window.__zarioSwitchHost2) {
   if (typeof document === 'undefined' || !hostBridge) return;
   let modal = document.getElementById('zario-switch-modal');
   if (!modal) {
@@ -911,14 +915,18 @@ export function openTVPairingModal(hostBridge) {
 
   const renderModalContent = () => {
     const status = hostBridge.getStatus();
-    const qrSvg = renderPairingQRCodeSvg(status.pairingUrl, 196);
+    const status2 = hostBridge2?.getStatus();
+    let splitOn = false;
+    try { splitOn = localStorage.getItem('zario.split2.v1') === '1'; } catch {}
+    const qrSvg = renderPairingQRCodeSvg(status.pairingUrl, 176);
+    const qrSvg2 = status2 ? renderPairingQRCodeSvg(status2.pairingUrl, 176) : '';
     const tvActive = document.body.classList.contains('zario-tv-mode');
     modal.innerHTML = `
       <div class="zario-switch-modal-card" role="dialog" aria-label="Samsung TV & iPhone Switch Controller Setup">
         <div class="zario-switch-modal-header">
           <div>
             <span class="zario-switch-badge">🎮 NINTENDO SWITCH MODE · SAMSUNG 45" TV</span>
-            <h2>Pair Your iPhone Wireless Controller</h2>
+            <h2>Pair iPhone / Android Controllers</h2>
           </div>
           <button type="button" class="zario-switch-close" id="zario-switch-close-btn">✕ Close</button>
         </div>
@@ -932,11 +940,21 @@ export function openTVPairingModal(hostBridge) {
             </div>
             <div class="zario-switch-conn-status ${status.connected ? 'is-connected' : 'is-waiting'}">
               ${status.connected
-                ? `✅ iPhone Connected (${status.transport})`
-                : '📡 Waiting for iPhone to scan QR or enter code...'}
+                ? `✅ P1 Connected (${status.transport})`
+                : '📡 P1 waiting for phone...'}
             </div>
           </div>
 
+          ${status2 ? `
+          <div class="zario-switch-qr-box">
+            <h3>PLAYER 2</h3>
+            <div class="zario-switch-qr-frame">${qrSvg2}</div>
+            <div class="zario-switch-room-pill"><span>ROOM CODE:</span><strong>${status2.roomCode}</strong></div>
+            <div class="zario-switch-conn-status ${status2.connected ? 'is-connected' : 'is-waiting'}">
+              ${status2.connected ? `✅ P2 Connected (${status2.transport})` : '📡 P2 waiting for phone...'}
+            </div>
+          </div>
+          ` : ''}
           <div class="zario-switch-steps">
             <h3>How to Play on Your 2021 45" Samsung Smart TV</h3>
             <ol>
@@ -952,6 +970,7 @@ export function openTVPairingModal(hostBridge) {
             </ol>
 
             <div class="zario-switch-actions">
+              <button type="button" class="zario-switch-btn secondary" id="zario-toggle-split-btn">🕹 2-PLAYER SPLIT-SCREEN: ${splitOn ? 'ON' : 'OFF'}</button>
               <button type="button" class="zario-switch-btn primary" id="zario-toggle-tv-mode-btn">
                 📺 45" Samsung TV Safe-Area & 60fps Mode: <strong>${tvActive ? 'ON' : 'OFF'}</strong>
               </button>
@@ -966,6 +985,12 @@ export function openTVPairingModal(hostBridge) {
 
     modal.querySelector('#zario-switch-close-btn')?.addEventListener('click', () => {
       modal.hidden = true;
+    });
+    modal.querySelector('#zario-toggle-split-btn')?.addEventListener('click', () => {
+      let enabled = false;
+      try { enabled = localStorage.getItem('zario.split2.v1') === '1'; } catch {}
+      window.__zarioSetSplitScreen?.(!enabled);
+      renderModalContent();
     });
     modal.querySelector('#zario-toggle-tv-mode-btn')?.addEventListener('click', () => {
       const next = !document.body.classList.contains('zario-tv-mode');
@@ -982,6 +1007,9 @@ export function openTVPairingModal(hostBridge) {
   if (!modal._subscribed) {
     modal._subscribed = true;
     hostBridge.onStatusChange(() => {
+      if (!modal.hidden) renderModalContent();
+    });
+    hostBridge2?.onStatusChange(() => {
       if (!modal.hidden) renderModalContent();
     });
   }
