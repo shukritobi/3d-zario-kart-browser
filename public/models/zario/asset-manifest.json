@@ -13,48 +13,48 @@
     {
       "driver": "Turbo",
       "kart": "Flare_Runner",
-      "character_glb": "./models/zario/characters/turbo.glb",
-      "kart_glb": "./models/zario/karts/flare-runner.glb",
+      "character_glb": "./characters/turbo.glb",
+      "kart_glb": "./karts/flare-runner.glb",
       "ready": false,
       "reason": "Raw character source only; no approved skin or animations"
     },
     {
       "driver": "Comet",
       "kart": "Starstream_GT",
-      "character_glb": "./models/zario/characters/comet.glb",
-      "kart_glb": "./models/zario/karts/starstream-gt.glb",
+      "character_glb": "./characters/comet.glb",
+      "kart_glb": "./karts/starstream-gt.glb",
       "ready": false,
       "reason": "References only; no approved GLB"
     },
     {
       "driver": "Bolt",
       "kart": "Snapback_R",
-      "character_glb": "./models/zario/characters/bolt.glb",
-      "kart_glb": "./models/zario/karts/snapback-r.glb",
+      "character_glb": "./characters/bolt.glb",
+      "kart_glb": "./karts/snapback-r.glb",
       "ready": false,
       "reason": "References only; no approved GLB"
     },
     {
       "driver": "Daisy",
       "kart": "Bloom_Buggy",
-      "character_glb": "./models/zario/characters/daisy.glb",
-      "kart_glb": "./models/zario/karts/bloom-buggy.glb",
+      "character_glb": "./characters/daisy.glb",
+      "kart_glb": "./karts/bloom-buggy.glb",
       "ready": false,
       "reason": "References only; no approved GLB"
     },
     {
       "driver": "King",
       "kart": "Royal_Rumbler",
-      "character_glb": "./models/zario/characters/king.glb",
-      "kart_glb": "./models/zario/karts/royal-rumbler.glb",
+      "character_glb": "./characters/king.glb",
+      "kart_glb": "./karts/royal-rumbler.glb",
       "ready": false,
       "reason": "References only; no approved GLB"
     },
     {
       "driver": "Pip",
       "kart": "Pocket_Rocket",
-      "character_glb": "./models/zario/characters/pip.glb",
-      "kart_glb": "./models/zario/karts/pocket-rocket.glb",
+      "character_glb": "./characters/pip.glb",
+      "kart_glb": "./karts/pocket-rocket.glb",
       "ready": false,
       "reason": "References only; no approved GLB"
     }
