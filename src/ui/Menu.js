@@ -400,6 +400,13 @@ export class Menu {
     };
     toggle.addEventListener('click', () => showPanel(panel.classList.contains('sk3d-hidden')));
     close.addEventListener('click', () => showPanel(false));
+    // A physical touch can be intercepted before Safari's synthetic click,
+    // especially while this scrollable panel is above a WebGL canvas.
+    // Close immediately on pointerdown, then let click close idempotently.
+    close.addEventListener('pointerdown', (e) => {
+      if (e.cancelable) e.preventDefault();
+      showPanel(false);
+    });
     document.addEventListener('keydown', e => { if (e.key === 'Escape') showPanel(false); });
     this.closeSettings = () => showPanel(false);
   }
