@@ -941,45 +941,108 @@ export class StarEffect {
 // ---------------------------------------------------------------------------
 
 function buildShellMesh(color) {
-  const g = new THREE.Group();
-  // AUDIT (power-up audit, 2026-08-11): the old mesh was a 10x8 sphere with
-  // 6-sided cones — raw MeshToonMaterial, no outline; read as a draft. Now
-  // higher segments, the shared PBR toon pipeline (smooth shading + sheen)
-  // and a cartoon outline; spikes spread like MK8 shells (3 top, 2 rear).
-  const bodyMat = getToonMaterial(color, { emissive: color, emissiveIntensity: 0.25 });
-  // AUDIT GPU-real (2026-08-23): shell leria ~25% do kart — MK8 shell é ~60%
-  // da largura. SphereGeometry 0.34→0.52 (pop-in usa mesh.scale, então a
-  // escala vai na GEOMETRIA, não no group).
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.52, 24, 16), bodyMat);
-  body.scale.set(1.05, 0.85, 1.55);
-  const outlineMat = getCartoonOutlineMaterial(0x1b2a41, 0.05);
-  const hull = new THREE.Mesh(body.geometry.clone(), outlineMat);
-  hull.scale.setScalar(1.05);
-  hull.castShadow = false;
-  body.add(hull);
-  g.add(body);
+  // True 3D turtle-shell projectile. The previous stretched sphere with
+  // bright cones read like a flat icon. This has a volumetric domed carapace,
+  // radial panel seams, raised crown plates, an underbody and layered ivory lip.
+  const group = new THREE.Group();
+  group.name = 'projectile-sculpted-shell';
+  const shellMat = new THREE.MeshPhysicalMaterial({
+    color, roughness: 0.3, metalness: 0.08,
+    clearcoat: 0.8, clearcoatRoughness: 0.2,
+  });
+  const undersideMat = new THREE.MeshStandardMaterial({
+    color: 0x24321c, roughness: 0.72, metalness: 0.03,
+  });
+  const borderMat = new THREE.MeshStandardMaterial({
+    color: 0x25362c, roughness: 0.65, metalness: 0.03,
+  });
+  const ivory = new THREE.MeshPhysicalMaterial({
+    color: 0xfff0cf, roughness: 0.42, clearcoat: 0.25,
+  });
+  const crest = new THREE.MeshPhysicalMaterial({
+    color: 0xf4ffe8, roughness: 0.34, clearcoat: 0.5,
+  });
 
-  const spikeMat = getToonMaterial(0xffffff, { emissive: 0xffffff, emissiveIntensity: 0.15 });
-  // Creamy white Koopa shell rim collar around the equator (MK8D signature)
-  const rimCollar = new THREE.Mesh(new THREE.TorusGeometry(0.50, 0.085, 10, 24), spikeMat);
-  rimCollar.rotation.x = Math.PI / 2;
-  rimCollar.scale.set(1.06, 1.52, 0.85);
-  rimCollar.position.y = -0.06;
-  g.add(rimCollar);
+  const bottom = new THREE.Mesh(new THREE.SphereGeometry(0.51, 36, 20), undersideMat);
+  bottom.scale.set(1.06, 0.48, 1.40);
+  bottom.position.y = -0.13;
+  bottom.castShadow = true;
+  group.add(bottom);
 
-  const spikeGeo = new THREE.ConeGeometry(0.14, 0.40, 8);
-  for (let i = 0; i < 3; i++) {
-    const spike = new THREE.Mesh(spikeGeo, spikeMat);
-    spike.position.set((i - 1) * 0.40, 0.46, 0);
-    g.add(spike);
+  // Explicit hemisphere: genuine dome silhouette and better diffuse shading.
+  const dome = new THREE.Mesh(
+    new THREE.SphereGeometry(0.52, 48, 24, 0, Math.PI * 2, 0, Math.PI / 2),
+    shellMat
+  );
+  dome.scale.set(1.06, 0.92, 1.42);
+  dome.position.y = -0.07;
+  dome.castShadow = true;
+  group.add(dome);
+
+  const outerLip = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.074, 12, 56), ivory);
+  outerLip.rotation.x = Math.PI / 2;
+  outerLip.scale.set(1.06, 1.42, 1);
+  outerLip.position.y = -0.095;
+  outerLip.castShadow = true;
+  group.add(outerLip);
+
+  const innerLip = new THREE.Mesh(new THREE.TorusGeometry(0.50, 0.025, 8, 56), borderMat);
+  innerLip.rotation.x = Math.PI / 2;
+  innerLip.scale.set(1.06, 1.42, 1);
+  innerLip.position.y = -0.036;
+  group.add(innerLip);
+
+  // Panel stitching follows the ellipsoid's curved surface, NOT flat planes.
+  // Keep seams thin so they add geometric depth without looking like SVG lines.
+  const panelPoint = (theta, phi, rise = 0) => new THREE.Vector3(
+    (0.52 * 1.06 + rise) * Math.sin(theta) * Math.cos(phi),
+    -0.07 + (0.52 * 0.92 + rise) * Math.cos(theta),
+    (0.52 * 1.42 + rise) * Math.sin(theta) * Math.sin(phi),
+  );
+  const stitch = (points, material, radius = 0.012) => {
+    const line = new THREE.Mesh(
+      new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), Math.max(12, points.length * 2), radius, 5, false),
+      material
+    );
+    line.castShadow = false;
+    group.add(line);
+  };
+  for (let i = 0; i < 8; i++) {
+    const phi = i * Math.PI / 4;
+    const pts = [];
+    for (let n = 0; n <= 10; n++) pts.push(panelPoint(0.22 + n * 0.122, phi, 0.005));
+    stitch(pts, borderMat, 0.011);
   }
-  // Two smaller rear spikes on the shell's tail (MK8 silhouette).
-  for (let i = 0; i < 2; i++) {
-    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.28, 8), spikeMat);
-    spike.position.set((i - 0.5) * 0.31, 0.43, 0.95);
-    g.add(spike);
+  for (const theta of [0.75, 1.20]) {
+    const pts = [];
+    for (let n = 0; n <= 48; n++) pts.push(panelPoint(theta, n * Math.PI * 2 / 48, 0.007));
+    stitch(pts, borderMat, 0.009);
   }
-  return g;
+  // Raised crown and plated nodes catch highlights as the projectile spins.
+  const crown = new THREE.Mesh(new THREE.SphereGeometry(0.14, 18, 12), crest);
+  crown.scale.set(1, 0.30, 1.35);
+  crown.position.set(0, 0.42, 0);
+  group.add(crown);
+  const studGeo = new THREE.SphereGeometry(0.042, 10, 8);
+  for (let i = 0; i < 8; i++) {
+    const phi = (i + 0.5) * Math.PI / 4;
+    const point = panelPoint(0.98, phi, 0.024);
+    const stud = new THREE.Mesh(studGeo, crest);
+    stud.position.copy(point);
+    stud.scale.set(0.7, 0.6, 0.7);
+    group.add(stud);
+  }
+  // Ivory tips remain true meshes with soft 12-sided profiles and shadows.
+  const tipGeometry = new THREE.ConeGeometry(0.105, 0.29, 12, 2);
+  for (const [x, y, z] of [[0,0.48,0],[-0.30,0.34,-0.08],[0.30,0.34,-0.08],
+    [-0.22,0.32,0.47],[0.22,0.32,0.47]]) {
+    const tip = new THREE.Mesh(tipGeometry, ivory);
+    tip.position.set(x,y,z);
+    tip.castShadow = true;
+    group.add(tip);
+  }
+  group.traverse(object => { if (object.isMesh) object.receiveShadow = true; });
+  return group;
 }
 
 function buildBananaMesh() {
