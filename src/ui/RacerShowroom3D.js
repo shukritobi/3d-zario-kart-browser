@@ -390,6 +390,43 @@ export class RacerShowroom3D {
   }
 
   /**
+   * Export the current procedural driver + kart as an editable .glb.
+   * Geometry and transform hierarchy are preserved for Blender/SketchUp.
+   * This does not change the live game asset until an optimized replacement
+   * is deliberately imported in a future asset pipeline.
+   */
+  async downloadRacerGLB(charIdx = 0) {
+    if (!this._initThree()) throw new Error('3D showroom is unavailable');
+    const index = Math.max(0, Math.min(this._karts.length - 1, Math.floor(charIdx)));
+    const source = this._karts[index];
+    const character = CONFIG.kart.characters[index];
+    if (!source?.group || !character) throw new Error('Racer not found');
+    const { GLTFExporter } = await import('three/addons/exporters/GLTFExporter.js');
+    const model = source.group.clone(true);
+    model.visible = true;
+    model.position.set(0, 0, 0);
+    model.rotation.set(0, 0, 0);
+    model.name = 'Zario_' + character.name.replace(/[^a-z0-9]+/gi, '_');
+    let partNo = 0;
+    model.traverse((obj) => {
+      if (obj.isMesh && !obj.name) obj.name = 'KartPart_' + (++partNo);
+      if (obj.isSprite || /shadow|rank.?arrow/i.test(obj.name || '')) obj.visible = false;
+    });
+    const data = await new GLTFExporter().parseAsync(model, {
+      binary: true, onlyVisible: true, maxTextureSize: 1024,
+    });
+    const url = URL.createObjectURL(new Blob([data], {type:'model/gltf-binary'}));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'zario-racer-' + character.name.toLowerCase().replace(/[^a-z0-9]+/g,'-') + '.glb';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    return a.download;
+  }
+
+  /**
    * Stops the live 3D showroom loop immediately (called when leaving Racer Select or starting a race).
    */
   stopLive() {
