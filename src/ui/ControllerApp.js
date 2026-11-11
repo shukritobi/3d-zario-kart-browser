@@ -16,6 +16,7 @@
  */
 
 import { SwitchClientBridge, normalizeRoomCode } from '../input/SwitchBridge.js';
+import { screenTilt, tiltToSteer, normalizeAngle } from '../input/tiltMath.js';
 
 const ITEM_EMOJI = {
   mushroom: '🍄',
@@ -54,6 +55,12 @@ export function mountControllerApp(rootContainer) {
   const state = {
     steer: 0,
     stickSteer: 0,
+    stickY: 0,
+    mode: 'analog',
+    menuX: 0,
+    menuY: 0,
+    menuConfirm: false,
+    menuBack: false,
     gyroSteer: 0,
     throttle: 0,
     autoThrottle: true, // MK8 Deluxe Auto-Accelerate enabled by default
@@ -75,90 +82,57 @@ export function mountControllerApp(rootContainer) {
   ui.className = 'zario-controller-shell';
   ui.innerHTML = `
     <div class="zc-joycon-left">
-      <div class="zc-shoulder-bar">
-        <button type="button" class="zc-shoulder-btn" id="zc-btn-item-shoulder">ZL · USE ITEM</button>
-      </div>
-
-      <div class="zc-dpad-zone" id="zc-stick-zone">
-        <div class="zc-dpad-cross" role="group" aria-label="Directional Pad">
-          <div class="zc-dpad-up" id="zc-dpad-up" aria-label="Aim Forward">▲</div>
+      <div class="zc-pad-title">MOVE / STEER</div>
+      <div class="zc-dpad-zone" id="zc-stick-zone" role="group" aria-label="Directional pad and analog thumbstick">
+        <div class="zc-dpad-cross">
+          <button type="button" class="zc-dpad-up" id="zc-dpad-up" aria-label="Up or accelerate">▲</button>
           <div class="zc-dpad-middle-row">
-            <button type="button" class="zc-dpad-btn zc-dpad-left" id="zc-steer-left" aria-label="Steer Left">
-              <span class="zc-dpad-arrow">◀</span>
-              <span class="zc-dpad-label">LEFT</span>
-            </button>
-            <div class="zc-dpad-center-pivot">
-              <div class="zc-dpad-pivot-ring" id="zc-wheel-visual"></div>
-            </div>
-            <button type="button" class="zc-dpad-btn zc-dpad-right" id="zc-steer-right" aria-label="Steer Right">
-              <span class="zc-dpad-arrow">▶</span>
-              <span class="zc-dpad-label">RIGHT</span>
-            </button>
+            <button type="button" class="zc-dpad-btn zc-dpad-left" id="zc-steer-left" aria-label="Left">◀</button>
+            <div class="zc-dpad-center-pivot"><div class="zc-dpad-pivot-ring" id="zc-wheel-visual" aria-label="Analog stick"></div></div>
+            <button type="button" class="zc-dpad-btn zc-dpad-right" id="zc-steer-right" aria-label="Right">▶</button>
           </div>
-          <div class="zc-dpad-down" id="zc-dpad-down" aria-label="Aim Backward">▼</div>
+          <button type="button" class="zc-dpad-down" id="zc-dpad-down" aria-label="Down or brake">▼</button>
         </div>
-        <div class="zc-steer-readout" id="zc-steer-readout">D-PAD · 0°</div>
+        <div class="zc-steer-readout" id="zc-steer-readout">ANALOG · CENTER</div>
       </div>
-
       <div class="zc-left-utility-row">
-        <button type="button" class="zc-pill-btn" id="zc-btn-gyro">🎯 Tilt: OFF</button>
-        <button type="button" class="zc-pill-btn" id="zc-btn-recenter" hidden>⚖️ Center</button>
+        <button type="button" class="zc-pill-btn" id="zc-btn-mode">◎ ANALOG</button>
+        <button type="button" class="zc-pill-btn" id="zc-btn-gyro">GYRO AUTO</button>
+        <button type="button" class="zc-pill-btn" id="zc-btn-recenter" hidden>CENTER</button>
       </div>
     </div>
-
     <div class="zc-center-console">
       <div class="zc-top-bar">
-        <div class="zc-room-group">
-          <label for="zc-room-input">ROOM</label>
+        <div class="zc-room-group"><label for="zc-room-input">ROOM</label>
           <input id="zc-room-input" type="text" maxlength="6" value="${initialRoom}" autocomplete="off" autocapitalize="characters" spellcheck="false" />
           <button type="button" id="zc-room-connect">PAIR</button>
         </div>
-        <div class="zc-conn-pill" id="zc-conn-status">🟡 Linking TV...</div>
+        <div class="zc-conn-pill" id="zc-conn-status">Connecting...</div>
       </div>
-
       <div class="zc-telemetry-card">
         <div class="zc-tele-rank" id="zc-tele-rank">1st</div>
         <div class="zc-tele-mid">
-          <div class="zc-tele-speed"><span id="zc-tele-speed-val">0</span> <small>km/h</small></div>
-          <div class="zc-tele-lap" id="zc-tele-lap">LAP 1/3 · 🪙 0</div>
+          <div class="zc-tele-speed"><span id="zc-tele-speed-val">0</span><small> km/h</small></div>
+          <div class="zc-tele-lap" id="zc-tele-lap">LAP 1/3</div>
         </div>
-        <button type="button" class="zc-tele-item" id="zc-tele-item" aria-label="Tap to fire held item">🎲</button>
       </div>
-
       <div class="zc-center-actions">
-        <button type="button" class="zc-action-chip is-active" id="zc-btn-autogas">
-          🚀 Auto-Gas: <strong>ON</strong>
-        </button>
+        <button type="button" class="zc-action-chip is-active" id="zc-btn-autogas">AUTO GAS: ON</button>
         <div class="zc-center-subrow">
-          <button type="button" class="zc-action-chip" id="zc-btn-swap">
-            🔄 Swap (Y)
-          </button>
-          <button type="button" class="zc-action-chip" id="zc-btn-start">
-            ➕ Start / Pause
-          </button>
+          <button type="button" class="zc-action-chip" id="zc-btn-back">BACK</button>
+          <button type="button" class="zc-action-chip" id="zc-btn-confirm">SELECT</button>
+          <button type="button" class="zc-action-chip" id="zc-btn-start">START / PAUSE</button>
         </div>
       </div>
     </div>
-
     <div class="zc-joycon-right">
-      <div class="zc-shoulder-bar">
-        <button type="button" class="zc-shoulder-btn zc-zr" id="zc-btn-drift">ZR · DRIFT / TRICK</button>
-      </div>
-
+      <div class="zc-pad-title">ACTION</div>
       <div class="zc-abxy-cluster">
-        <button type="button" class="zc-pedal-btn zc-btn-a" id="zc-btn-gas">
-          <span class="zc-btn-letter">A</span>
-          <span class="zc-btn-sub">GAS / BOOST</span>
-        </button>
+        <button type="button" class="zc-pedal-btn zc-btn-a" id="zc-btn-drift"><span class="zc-btn-letter">R</span><span class="zc-btn-sub">DRIFT / TRICK</span></button>
         <div class="zc-secondary-pedals">
-          <button type="button" class="zc-pedal-btn zc-btn-b" id="zc-btn-brake">
-            <span class="zc-btn-letter">B</span>
-            <span class="zc-btn-sub">BRAKE</span>
-          </button>
-          <button type="button" class="zc-pedal-btn zc-btn-x" id="zc-btn-item">
-            <span class="zc-btn-letter">X</span>
-            <span class="zc-btn-sub">FIRE ITEM</span>
-          </button>
+          <button type="button" class="zc-pedal-btn zc-btn-b" id="zc-btn-brake"><span class="zc-btn-letter">B</span><span class="zc-btn-sub">BRAKE</span></button>
+          <button type="button" class="zc-pedal-btn zc-btn-x" id="zc-btn-item"><span class="zc-btn-letter">X</span><span class="zc-btn-sub">ITEM</span></button>
+          <button type="button" class="zc-pedal-btn zc-btn-a" id="zc-btn-gas"><span class="zc-btn-letter">A</span><span class="zc-btn-sub">GAS</span></button>
         </div>
       </div>
     </div>
@@ -330,7 +304,10 @@ export function mountControllerApp(rootContainer) {
     state.brake = down ? 1 : 0;
   });
 
+  let manualDrift = false;
+  let autoDriftUntil = 0;
   bindHoldButton('#zc-btn-drift', (down) => {
+    manualDrift = down;
     state.drift = down;
     if (down) pulseFeedback(18);
   });
@@ -358,8 +335,7 @@ export function mountControllerApp(rootContainer) {
     setTimeout(() => { state.useItem = false; }, 110);
   };
   bindTapButton('#zc-btn-item', fireItem);
-  bindTapButton('#zc-btn-item-shoulder', fireItem);
-  bindTapButton('#zc-tele-item', fireItem);
+  // One item button only: no duplicated shoulder/telemetry fire targets.
 
   // Auto-Gas toggle (Mario Kart 8 Smart Accelerate)
   const autoGasBtn = ui.querySelector('#zc-btn-autogas');
@@ -367,11 +343,19 @@ export function mountControllerApp(rootContainer) {
     state.autoThrottle = !state.autoThrottle;
     if (autoGasBtn) {
       autoGasBtn.classList.toggle('is-active', state.autoThrottle);
-      autoGasBtn.innerHTML = `🚀 Auto-Gas: <strong>${state.autoThrottle ? 'ON' : 'OFF'}</strong>`;
+      autoGasBtn.textContent = `AUTO GAS: ${state.autoThrottle ? 'ON' : 'OFF'}`;
     }
     pulseFeedback(15);
   });
 
+  bindTapButton('#zc-btn-confirm', () => {
+    state.menuConfirm = true;
+    setTimeout(() => { state.menuConfirm = false; }, 130);
+  });
+  bindTapButton('#zc-btn-back', () => {
+    state.menuBack = true;
+    setTimeout(() => { state.menuBack = false; }, 130);
+  });
   bindTapButton('#zc-btn-swap', () => {
     state.swapItem = true;
     pulseFeedback(15);
@@ -388,100 +372,158 @@ export function mountControllerApp(rootContainer) {
     }, 120);
   });
 
-  // Left/Right D-Pad steering buttons + smooth D-Pad rocker slide
+  // Four-way D-pad with optional 360-degree analog thumbstick.
+  // A rapid second tap in the same steering direction starts a short drift.
+  const modeBtn = ui.querySelector('#zc-btn-mode');
+  try { state.mode = localStorage.getItem('zario.phone.pad.v2') === 'dpad' ? 'dpad' : 'analog'; } catch {}
+  const syncMode = () => {
+    ui.classList.toggle('zc-mode-dpad', state.mode === 'dpad');
+    if (modeBtn) modeBtn.textContent = state.mode === 'analog' ? '◎ ANALOG' : '✚ D-PAD';
+  };
+  syncMode();
+  bindTapButton('#zc-btn-mode', () => {
+    state.mode = state.mode === 'analog' ? 'dpad' : 'analog';
+    state.stickSteer = 0; state.stickY = 0;
+    try { localStorage.setItem('zario.phone.pad.v2', state.mode); } catch {}
+    syncMode();
+  });
   let leftBtnHeld = false;
   let rightBtnHeld = false;
-  bindHoldButton('#zc-steer-left', (down) => {
-    leftBtnHeld = down;
-    if (down) pulseFeedback(10);
-  });
-  bindHoldButton('#zc-steer-right', (down) => {
-    rightBtnHeld = down;
-    if (down) pulseFeedback(10);
-  });
+  let upBtnHeld = false;
+  let downBtnHeld = false;
+  const lastDirectionalTap = {left: 0, right: 0};
+  const steeringTap = (dir) => {
+    const now = performance.now();
+    if (now - lastDirectionalTap[dir] <= 290 && now - lastDirectionalTap[dir] >= 70) {
+      autoDriftUntil = now + 1050;
+      pulseFeedback(30);
+    }
+    lastDirectionalTap[dir] = now;
+  };
+  bindHoldButton('#zc-steer-left', (down) => { leftBtnHeld = down; if (down) steeringTap('left'); });
+  bindHoldButton('#zc-steer-right', (down) => { rightBtnHeld = down; if (down) steeringTap('right'); });
+  bindHoldButton('#zc-dpad-up', (down) => { upBtnHeld = down; });
+  bindHoldButton('#zc-dpad-down', (down) => { downBtnHeld = down; });
 
   const stickZone = ui.querySelector('#zc-stick-zone');
   let stickPointerId = null;
-  stickZone?.addEventListener('touchstart', (e) => {
-    if (e.cancelable) e.preventDefault();
-  }, { passive: false });
   stickZone?.addEventListener('pointerdown', (e) => {
-    if (e.target.closest('button')) return;
+    if (state.mode !== 'analog' || e.target.closest('button')) return;
     stickPointerId = e.pointerId;
-    updateDpadSlideFromEvent(e);
+    try { stickZone.setPointerCapture(e.pointerId); } catch {}
+    updateStick(e);
   });
   stickZone?.addEventListener('pointermove', (e) => {
-    if (e.pointerId !== stickPointerId) return;
-    updateDpadSlideFromEvent(e);
+    if (stickPointerId === e.pointerId) updateStick(e);
   });
   const endStick = (e) => {
-    if (e.pointerId !== stickPointerId) return;
+    if (stickPointerId !== e.pointerId) return;
     stickPointerId = null;
     state.stickSteer = 0;
+    state.stickY = 0;
   };
   stickZone?.addEventListener('pointerup', endStick);
   stickZone?.addEventListener('pointercancel', endStick);
-
-  function updateDpadSlideFromEvent(e) {
+  stickZone?.addEventListener('lostpointercapture', endStick);
+  function updateStick(e) {
     const rect = stickZone.getBoundingClientRect();
-    if (isPortraitRotated) {
-      // When rotated +90deg in portrait mode, screen Y corresponds to controller X!
-      const cy = rect.top + rect.height * 0.5;
-      const dy = (e.clientY - cy) / Math.max(36, rect.height * 0.36);
-      state.stickSteer = Math.max(-1, Math.min(1, dy));
-    } else {
-      const cx = rect.left + rect.width * 0.5;
-      const dx = (e.clientX - cx) / Math.max(36, rect.width * 0.36);
-      state.stickSteer = Math.max(-1, Math.min(1, dx));
-    }
+    // CSS-rotated portrait fallback: virtual X/Y become physical Y/-X.
+    const dx = isPortraitRotated
+      ? (e.clientY - (rect.top + rect.height / 2))
+      : (e.clientX - (rect.left + rect.width / 2));
+    const dy = isPortraitRotated
+      ? -(e.clientX - (rect.left + rect.width / 2))
+      : (e.clientY - (rect.top + rect.height / 2));
+    const radius = Math.max(38, Math.min(rect.width, rect.height) * 0.38);
+    state.stickSteer = Math.abs(dx) < radius * 0.09 ? 0 : Math.max(-1, Math.min(1, dx / radius));
+    state.stickY = Math.abs(dy) < radius * 0.15 ? 0 : Math.max(-1, Math.min(1, dy / radius));
   }
 
-  // iPhone Gyroscope Tilt Steering (Safari iOS 13+ permission compliant)
   const gyroBtn = ui.querySelector('#zc-btn-gyro');
   const recenterBtn = ui.querySelector('#zc-btn-recenter');
-
-  const handleOrientation = (ev) => {
-    if (!state.gyroEnabled) return;
-    const angle = typeof window.orientation === 'number' && Math.abs(window.orientation) === 90
-      ? (window.orientation === 90 ? (ev.beta || 0) : -(ev.beta || 0))
-      : (ev.gamma || ev.beta || 0);
-    state.rawTiltDeg = angle;
-    const calibrated = angle - state.gyroZeroOffset;
-    state.tiltDeg = calibrated;
-    const normalized = Math.max(-1, Math.min(1, calibrated / 28));
-    state.gyroSteer = Math.abs(normalized) < 0.05 ? 0 : normalized;
+  let gyroNeutral = null;
+  let lastSensorAt = 0;
+  let permissionAttempted = false;
+  let userDisabledGyro = false;
+  try { userDisabledGyro = localStorage.getItem('zario.phone.gyro.v2') === 'off'; } catch {}
+  const screenAngle = () => {
+    const legacy = Number(window.orientation);
+    const screenValue = Number(screen.orientation?.angle);
+    if (Number.isFinite(legacy) && Math.abs(legacy) === 90 &&
+        (!Number.isFinite(screenValue) || normalizeAngle(screenValue) === 0)) return normalizeAngle(legacy);
+    return normalizeAngle(Number.isFinite(screenValue) ? screenValue : (Number.isFinite(legacy) ? legacy : 0));
   };
-
-  gyroBtn?.addEventListener('click', async (e) => {
-    e.preventDefault();
-    if (state.gyroEnabled) {
+  const handleOrientation = (ev) => {
+    const raw = screenTilt(ev, screenAngle());
+    if (raw === null) return;
+    state.rawTiltDeg = raw;
+    lastSensorAt = performance.now();
+    if (!state.gyroEnabled) return;
+    if (gyroNeutral === null) { gyroNeutral = raw; return; }
+    const target = tiltToSteer(raw, gyroNeutral, {deadZone: 3.2, fullSteer: 32});
+    state.gyroSteer += 0.36 * (target - state.gyroSteer);
+    state.tiltDeg = raw - gyroNeutral;
+  };
+  window.addEventListener('deviceorientation', handleOrientation, {passive: true});
+  const syncGyro = (label) => {
+    if (gyroBtn) {
+      gyroBtn.textContent = label || (state.gyroEnabled ? 'GYRO ON' : 'GYRO OFF');
+      gyroBtn.classList.toggle('is-active', state.gyroEnabled);
+    }
+    if (recenterBtn) recenterBtn.hidden = !state.gyroEnabled;
+  };
+  async function enableGyro() {
+    if (userDisabledGyro || permissionAttempted || state.gyroEnabled) return;
+    permissionAttempted = true;
+    try {
+      if (typeof DeviceOrientationEvent === 'undefined') throw Error('No motion sensor');
+      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        // iOS requires this synchronous call from a real touch/pointer gesture.
+        const result = await DeviceOrientationEvent.requestPermission();
+        if (result !== 'granted') throw Error('Motion access declined');
+      }
+      state.gyroEnabled = true;
+      state.gyroSteer = 0;
+      gyroNeutral = null;
+      syncGyro();
+    } catch {
       state.gyroEnabled = false;
       state.gyroSteer = 0;
-      gyroBtn.textContent = '🎯 Tilt: OFF';
-      gyroBtn.classList.remove('is-active');
-      if (recenterBtn) recenterBtn.hidden = true;
-      return;
+      userDisabledGyro = true;
+      syncGyro('GYRO UNAVAILABLE');
     }
-    try {
-      if (typeof DeviceOrientationEvent !== 'undefined' &&
-          typeof DeviceOrientationEvent.requestPermission === 'function') {
-        const perm = await DeviceOrientationEvent.requestPermission();
-        if (perm !== 'granted') return;
-      }
-      window.addEventListener('deviceorientation', handleOrientation);
-      state.gyroEnabled = true;
-      state.gyroZeroOffset = state.rawTiltDeg || 0;
-      gyroBtn.textContent = '🎯 Tilt: ON';
-      gyroBtn.classList.add('is-active');
-      if (recenterBtn) recenterBtn.hidden = false;
-      pulseFeedback(25);
-    } catch { /* ignore */ }
+  }
+  // Android can start listening without a permission prompt; on iOS the first
+  // controller interaction supplies the gesture, and rejection leaves D-pad on.
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission !== 'function') enableGyro();
+  ui.addEventListener('pointerdown', () => {
+    if (!permissionAttempted && !userDisabledGyro) enableGyro();
+  }, {once: true, capture: true});
+  bindTapButton('#zc-btn-gyro', () => {
+    if (state.gyroEnabled) {
+      userDisabledGyro = true;
+      state.gyroEnabled = false;
+      state.gyroSteer = 0;
+      try { localStorage.setItem('zario.phone.gyro.v2', 'off'); } catch {}
+      syncGyro();
+    } else {
+      userDisabledGyro = false;
+      permissionAttempted = false;
+      try { localStorage.setItem('zario.phone.gyro.v2', 'on'); } catch {}
+      enableGyro();
+    }
   });
-
   bindTapButton('#zc-btn-recenter', () => {
-    state.gyroZeroOffset = state.rawTiltDeg || 0;
+    gyroNeutral = Number.isFinite(state.rawTiltDeg) ? state.rawTiltDeg : null;
+    state.gyroSteer = 0;
     pulseFeedback(15);
   });
+  window.addEventListener('orientationchange', () => {
+    gyroNeutral = null;
+    state.gyroSteer = 0;
+  });
+  syncGyro(userDisabledGyro ? 'GYRO OFF' : 'GYRO AUTO');
 
   // 30Hz input transmission & D-Pad visual indicator loop
   const wheelVisual = ui.querySelector('#zc-wheel-visual');
@@ -489,21 +531,22 @@ export function mountControllerApp(rootContainer) {
 
   const timer = setInterval(() => {
     const dpadSteer = (rightBtnHeld ? 1 : 0) - (leftBtnHeld ? 1 : 0);
-    let combinedSteer = dpadSteer !== 0
-      ? dpadSteer
-      : (Math.abs(state.stickSteer) > 0.05 ? state.stickSteer : (state.gyroEnabled ? state.gyroSteer : 0));
-    combinedSteer = Math.max(-1, Math.min(1, combinedSteer));
+    const steerFromStick = state.mode === 'analog' ? state.stickSteer : 0;
+    const steerFromGyro = state.gyroEnabled && performance.now() - lastSensorAt < 650 ? state.gyroSteer : 0;
+    const combinedSteer = Math.max(-1, Math.min(1,
+      dpadSteer || (Math.abs(steerFromStick) > 0.08 ? steerFromStick : steerFromGyro)));
+    const axisY = state.mode === 'analog' ? state.stickY : 0;
     state.steer = combinedSteer;
-    state.throttle = (manualGasHeld || (state.autoThrottle && state.brake === 0)) ? 1 : 0;
-
-    if (wheelVisual) {
-      wheelVisual.style.transform = `translateX(${(combinedSteer * 10).toFixed(1)}px)`;
-    }
-    if (steerReadout) {
-      const dirLabel = combinedSteer < -0.1 ? '◀ LEFT' : combinedSteer > 0.1 ? 'RIGHT ▶' : 'CENTER';
-      steerReadout.textContent = `${state.gyroEnabled ? 'GYRO' : 'D-PAD'} · ${dirLabel} (${Math.round(combinedSteer * 45)}°)`;
-    }
-
+    const up = upBtnHeld || axisY < -0.32;
+    const down = downBtnHeld || axisY > 0.32;
+    state.menuX = dpadSteer || (Math.abs(steerFromStick) > 0.6 ? Math.sign(steerFromStick) : 0);
+    state.menuY = (down ? 1 : 0) - (up ? 1 : 0);
+    state.brake = (down || ui.querySelector('#zc-btn-brake')?.classList.contains('is-pressed')) ? 1 : 0;
+    state.throttle = (manualGasHeld || up || (state.autoThrottle && !state.brake)) ? 1 : 0;
+    state.drift = manualDrift || performance.now() < autoDriftUntil;
+    if (wheelVisual) wheelVisual.style.transform = `translate(${(combinedSteer * 12).toFixed(1)}px, ${(axisY * 9).toFixed(1)}px)`;
+    if (steerReadout) steerReadout.textContent =
+      `${state.gyroEnabled ? 'GYRO' : state.mode.toUpperCase()} · ${combinedSteer < -0.1 ? 'LEFT' : combinedSteer > 0.1 ? 'RIGHT' : 'CENTER'}`;
     clientBridge.sendInput(state);
   }, 33);
   timer.unref?.();
