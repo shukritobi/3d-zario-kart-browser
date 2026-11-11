@@ -1247,7 +1247,10 @@ export class Kart {
     // ---- wheels: tire + rounded shoulder + sport rim + brake disc ----------
     const wR = KC.wheelRadius;
     const wW = KC.wheelWidth;
-    const wy = wR;
+    // KartPhysics already raises the entire kart root by wheelRadius + 0.04.
+    // Wheels centered at +wheelRadius doubled that offset and hovered above
+    // the track. Root center at zero seats the tread ~4 cm above asphalt.
+    const wy = 0;
     const wz = KC.chassisLength / 2 - 0.18;
     const wx = KC.chassisWidth / 2 + 0.24; // AUDIT R11: 0.18→0.24 — bitola larga (postura MK8 wide stance)
     const faceX = wW / 2;
