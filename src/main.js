@@ -2187,7 +2187,7 @@ window.__sk3d = {
     return {state:getState(), phase:raceManager.phase,
       lap:st.lap, progress:st.progress01,
       position:{x:st.position.x,y:st.position.y,z:st.position.z},
-      speed:st.speed, seconds:raceDiagnostics.snapshot().seconds,
+      speed:st.speed, seconds:raceDiagnostics._clock,
       finished:!!playerKart.finished};
   },
 
