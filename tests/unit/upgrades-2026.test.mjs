@@ -18,7 +18,7 @@ import {
 } from '../../src/input/SwitchBridge.js';
 import { TRACKS, MENU_TRACK, STAR_TRACK, VICTORY_TRACK, DEFEAT_TRACK } from '../../src/audio/music.js';
 
-test('Ramp physics: launches across center, left (-2.4m), and right (+2.4m) lanes and lands with 850ms Trick Boost', () => {
+test('Ramp physics: launches all lanes and awards landing boost only after a deliberate airborne trick press', () => {
   const scene = new THREE.Scene();
   const track = buildTrack(scene, TRACK_PATH, 1);
   assert.ok(track.ramps.length >= 3, `Expected >= 3 ramps on Meadow Circuit, got ${track.ramps.length}`);
@@ -50,10 +50,15 @@ test('Ramp physics: launches across center, left (-2.4m), and right (+2.4m) lane
     let launchedAirborne = false;
     let maxHeightAboveBase = 0;
     let landedAfterJump = false;
+    let trickRequested = false;
 
     for (let i = 0; i < 160; i++) {
-      kart.setControls({ steer: 0, throttle: 1, brake: false, drift: true });
+      // Normal throttle/auto-accelerate cannot trigger a flip. A fresh drift
+      // tap after becoming airborne should deliberately request one.
+      const airborneDriftTap = !trickRequested && kart._airTime > 0.1;
+      kart.setControls({ steer: 0, throttle: 1, brake: false, drift: airborneDriftTap });
       kart.update(1 / 60, { track });
+      if (airborneDriftTap) trickRequested = true;
 
       if (kart.state.rampSlope > 0.05) climbedSlope = true;
       if (kart._airTime > 0) {
@@ -70,9 +75,33 @@ test('Ramp physics: launches across center, left (-2.4m), and right (+2.4m) lane
     assert.ok(launchedAirborne, `Kart in lane offset ${lateralOffset}m should launch into the air`);
     assert.ok(maxHeightAboveBase > 1.8, `Kart in lane offset ${lateralOffset}m should clear >1.8m height (got ${maxHeightAboveBase.toFixed(2)}m)`);
     assert.ok(landedAfterJump, `Kart in lane offset ${lateralOffset}m should land cleanly back on the road`);
-    assert.ok(TrickFired, `Kart in lane offset ${lateralOffset}m should trigger a Mario Kart Trick Boost upon landing`);
+    assert.ok(trickRequested, `Kart in lane offset ${lateralOffset}m should receive a deliberate airborne trick press`);
+    assert.ok(TrickFired, `Kart in lane offset ${lateralOffset}m should trigger a Trick Boost after the airborne press`);
     assert.ok(kart._boostMs >= 750 && kart.state.boost, `Kart should receive 850ms trick boost on landing (_boostMs=${kart._boostMs})`);
   }
+});
+
+test('A ramp launch with accelerator held does not automatically flip the kart', () => {
+  const track = buildTrack(new THREE.Scene(), TRACK_PATH, 1);
+  const ramp = track.ramps[0];
+  const startPos = ramp.point.clone().addScaledVector(ramp.dir, -4);
+  startPos.y = ramp.point.y || 0;
+  const kart = new Kart({
+    character: CONFIG.kart.characters[0], isPlayer: true, startPosition: startPos,
+    startHeading: Math.atan2(ramp.dir.x, ramp.dir.z),
+  });
+  kart.state.speed = 32;
+  let fired = false;
+  kart._onTrick = () => { fired = true; };
+  let launched = false;
+  for (let frame = 0; frame < 150; frame++) {
+    kart.setControls({steer: 0, throttle: 1, brake: false, drift: false});
+    kart.update(1 / 60, {track});
+    if (kart._airTime > 0.08) launched = true;
+  }
+  assert.ok(launched, 'Ramp launch should generate airtime without any trick');
+  assert.equal(fired, false, 'Keeping accelerator held cannot award a trick boost');
+  assert.equal(kart._trickArmed, false, 'Normal jumps must not arm a flip/roll');
 });
 
 test('Track 5 (Inferno Volcano) and Track 6 (Haunted Mansion) build complete circuits, ramps, and sculpted 3D landmarks', () => {
@@ -143,6 +172,10 @@ test('Samsung TV + iPhone Switch Controller Bridge: QR matrix, room pairing, and
     swapItem: true,
     gyroEnabled: true,
     tiltDeg: -18,
+    menuX: 1,
+    menuY: -1,
+    menuConfirm: true,
+    menuBack: true,
   }, 'UnitTest-Relay');
 
   const frame1 = host.sampleFrameInput();
@@ -152,11 +185,19 @@ test('Samsung TV + iPhone Switch Controller Bridge: QR matrix, room pairing, and
   assert.equal(frame1.drift, true);
   assert.equal(frame1.useItem, true, 'First frame with useItem=true should trigger rising edge');
   assert.equal(frame1.swapItem, true, 'First frame with swapItem=true should trigger rising edge');
+  assert.equal(frame1.menuX, 1, 'Phone D-pad should navigate menus horizontally');
+  assert.equal(frame1.menuY, -1, 'Phone D-pad should navigate menus vertically');
+  assert.equal(frame1.menuConfirm, true, 'Phone select should trigger one menu action');
+  assert.equal(frame1.menuBack, true, 'Phone back should trigger one menu action');
 
   // Second sample without new press should clear one-shot edge flags
   const frame2 = host.sampleFrameInput();
   assert.equal(frame2.useItem, false, 'Rising-edge useItem should be consumed on first sample');
   assert.equal(frame2.swapItem, false, 'Rising-edge swapItem should be consumed on first sample');
+  assert.equal(frame2.menuX, 0);
+  assert.equal(frame2.menuY, 0);
+  assert.equal(frame2.menuConfirm, false);
+  assert.equal(frame2.menuBack, false);
   host.stop();
 });
 
@@ -213,9 +254,12 @@ test('Ramp & Trick Camera Anti-Dizziness: kart.state.groundY tracks road baselin
   kart.state.speed = 32;
 
   let sawAirborneTrick = false;
+  let trickPressed = false;
   for (let i = 0; i < 65; i++) {
-    kart.setControls({ steer: 0, throttle: 1, brake: false, drift: true });
+    const requestTrick = !trickPressed && kart._airTime > 0.1;
+    kart.setControls({ steer: 0, throttle: 1, brake: false, drift: requestTrick });
     kart.update(1 / 60, { track });
+    if (requestTrick) trickPressed = true;
     if (kart._trickAnimT > 0.1) sawAirborneTrick = true;
     assert.equal(typeof kart.state.groundY, 'number', 'kart.state.groundY must always be populated for steady camera anchoring');
     const airLift = Math.max(0, kart.state.position.y - kart.state.groundY);

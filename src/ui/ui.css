@@ -3331,3 +3331,84 @@ body.zc-controller-body-lock {
 }
 
 
+
+
+/* 2026-11-11: compact two-phone controller, analog stick / true four-way D-pad. */
+.zario-controller-shell {
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1.05fr);
+  gap: clamp(4px, 1vw, 10px);
+}
+.zc-pad-title { text-align:center; font-size:clamp(9px,2.4vh,14px); font-weight:900; letter-spacing:.13em; color:white; }
+.zc-dpad-zone { touch-action:none!important; }
+.zc-dpad-cross { max-width:220px; margin:auto; gap:3px; }
+.zc-dpad-up,.zc-dpad-down {
+  pointer-events:auto!important; cursor:pointer;
+  width:clamp(42px,12vh,58px); height:clamp(30px,9vh,44px);
+  color:#fff; border:2px solid #f8fafc;
+  background:#10243b; font-size:clamp(15px,4vh,23px);
+  touch-action:none!important;
+}
+.zc-dpad-middle-row { max-height:none; flex:1 1 auto; min-height:54px; }
+.zc-dpad-btn { flex:1 1 auto; border-radius:14px; font-size:clamp(18px,6vh,31px); }
+.zc-dpad-center-pivot {
+  width:clamp(56px,17vh,90px); border-radius:50%;
+  background:radial-gradient(circle,#234d70,#091629);
+  border:3px solid #90e0ef;
+}
+.zc-dpad-pivot-ring {
+  width:clamp(28px,8vh,44px); height:clamp(28px,8vh,44px);
+  background:radial-gradient(circle at 34% 28%,#85d6ee,#1d3c59 75%);
+  box-shadow:0 3px 10px #0009; pointer-events:none;
+}
+.zc-mode-dpad .zc-dpad-center-pivot { opacity:.5; pointer-events:none; }
+.zc-dpad-up.is-pressed,.zc-dpad-down.is-pressed { background:#ffd166; color:#111827; }
+.zc-left-utility-row { flex-wrap:wrap; }
+.zc-pill-btn { font-size:clamp(10px,2.2vh,13px); min-height:29px; }
+.zc-center-subrow { display:flex; flex-wrap:wrap; justify-content:center; gap:3px; }
+.zc-center-subrow .zc-action-chip { flex:1 1 30%; font-size:clamp(9px,2vh,12px); padding:2px 4px; }
+.zc-telemetry-card { flex:1 1 auto; }
+.zc-joycon-right .zc-abxy-cluster { display:flex; flex-direction:column; gap:6px; flex:1 1 auto; justify-content:center; }
+.zc-joycon-right .zc-secondary-pedals { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px; }
+.zc-joycon-right .zc-pedal-btn { min-width:0; min-height:clamp(44px,17vh,76px); }
+.zc-joycon-right #zc-btn-drift { min-height:clamp(40px,15vh,65px); background:#7431bb; border:2px solid #dfc4ff; }
+.zc-joycon-right .zc-btn-letter { font-size:clamp(17px,5vh,28px); }
+.zc-joycon-right .zc-btn-sub { font-size:clamp(8px,1.9vh,11px); white-space:normal; line-height:1.1; text-align:center; }
+@media (max-height:340px) {
+ .zario-controller-shell { padding:4px 6px; }
+ .zc-joycon-left,.zc-joycon-right,.zc-center-console { padding:4px; gap:3px; border-radius:12px; }
+ .zc-dpad-cross { max-width:160px; }
+ .zc-telemetry-card { padding:2px 4px; }
+ .zc-center-subrow .zc-action-chip { min-height:24px; }
+}
+.zario-split-label {
+  position:fixed; top:max(12px,env(safe-area-inset-top)); z-index:20;
+  background:#071526cc; color:#fff; border:1px solid #fff4; padding:7px 12px;
+  border-radius:14px; font:bold 14px system-ui; pointer-events:none;
+}
+.zario-split-label.p1 { left:2%; }
+.zario-split-label.p2 { left:52%; }
+.zario-split-divider { position:fixed; top:0; bottom:0; left:50%; width:3px; z-index:19; background:#ffffff70; pointer-events:none; }
+body.zario-splitscreen .sk3d-hud { opacity:.3; pointer-events:none; }
+
+/* Dual-phone pairing layout; two scannable rooms fit side by side on TV. */
+.zario-switch-modal-card { width:min(1110px,96vw); }
+.zario-switch-grid {
+  grid-template-columns:minmax(180px,205px) minmax(180px,205px) minmax(260px,1fr);
+  gap:clamp(9px,1.4vw,18px); align-items:start;
+}
+.zario-switch-qr-frame svg { max-width:100%; height:auto; }
+.zario-switch-qr-box { min-width:0; padding:10px; gap:7px; }
+.zario-switch-steps { min-width:0; }
+.zario-switch-steps ol { font-size:clamp(12px,1.45vw,15px); }
+.zario-switch-btn { font-size:clamp(12px,1.35vw,15px); padding:8px 11px; }
+@media(max-width:850px) {
+  .zario-switch-modal-card { padding:12px; }
+  .zario-switch-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .zario-switch-steps { grid-column:1/-1; }
+}
+@media(max-width:480px) {
+  .zario-switch-grid { grid-template-columns:1fr; }
+  .zario-switch-modal-backdrop { padding:4px; }
+  .zario-switch-qr-box { width:100%; }
+  .zario-switch-steps { grid-column:auto; }
+}

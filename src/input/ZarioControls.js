@@ -20,6 +20,9 @@ export class ZarioControls {
     this.onItemUp = onItemUp;
     this.onPause = onPause;
     this.tiltEnabled = false;
+    this.autoTiltAttempted = false;
+    try { this.userDisabledTilt = localStorage.getItem('zario.tilt.choice.v2') === 'off'; }
+    catch { this.userDisabledTilt = false; }
     this.steer = 0;
     this.neutral = null;
     this.lastRaw = null;
@@ -147,37 +150,54 @@ export class ZarioControls {
     if (this.tiltEnabled) this.toggle.textContent = 'GYRO ON ✓';
   }
 
-  async toggleTilt() {
-    if (this.tiltEnabled) {
+  // Called synchronously from Start Race's click: iOS requires the permission
+  // request inside the original trusted gesture, before any async work.
+  enableTiltForRace() {
+    if (this.tiltEnabled || this.userDisabledTilt || this.autoTiltAttempted) return;
+    this.autoTiltAttempted = true;
+    void this.toggleTilt({automatic: true});
+  }
+
+  async toggleTilt({automatic = false} = {}) {
+    if (automatic && this.userDisabledTilt) return false;
+    if (this.tiltEnabled && !automatic) {
       this.tiltEnabled = false;
+      this.userDisabledTilt = true;
       this.steer = 0;
       this.neutral = null;
       this.toggle.textContent = 'GYRO OFF';
       this.recenterButton.hidden = true;
       this.axisButton.hidden = true;
       this.touchRoot?.classList.remove('zario-tilt-active');
-      return;
+      try { localStorage.setItem('zario.tilt.choice.v2', 'off'); } catch {}
+      return false;
     }
     try {
       if (typeof DeviceOrientationEvent === 'undefined') throw new Error('No motion sensors');
-      // On iOS, requestPermission MUST be reached from this button's click.
       if (typeof DeviceOrientationEvent.requestPermission === 'function') {
         const permission = await DeviceOrientationEvent.requestPermission();
         if (permission !== 'granted') throw new Error('Motion permission denied');
       }
       this.tiltEnabled = true;
+      this.userDisabledTilt = false;
       this.neutral = null;
       this.steer = 0;
       this.toggle.textContent = 'GYRO ON ✓';
       this.recenterButton.hidden = false;
       this.axisButton.hidden = false;
       this.touchRoot?.classList.remove('zario-tilt-active');
+      try { localStorage.setItem('zario.tilt.choice.v2', 'on'); } catch {}
+      return true;
     } catch (err) {
-      console.info('[Zario Kart] tilt unavailable, touch remains active:', err?.message || err);
-      this.toggle.textContent = 'GYRO DENIED';
+      console.info('[Zario Kart] tilt unavailable, D-pad remains active:', err?.message || err);
+      this.toggle.textContent = 'GYRO UNAVAILABLE';
       this.touchRoot?.classList.remove('zario-tilt-active');
       this.tiltEnabled = false;
+      this.userDisabledTilt = true;
       this.steer = 0;
+      // Remember denial so changing tracks never causes another popup.
+      try { localStorage.setItem('zario.tilt.choice.v2', 'off'); } catch {}
+      return false;
     }
   }
 

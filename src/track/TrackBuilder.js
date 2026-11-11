@@ -2514,8 +2514,8 @@ function buildRamps(path, length, rampTs, themeId = 1) {
   const rampHeight = 1.15; // Crisp ~12° Mario Kart stunt ramp incline
   const rampWidth = CONFIG.track.roadWidth * 0.84;
   const rampGeo = buildRampGeometry(rampWidth, rampHeight, rampLen);
-  const braceGeo = buildRampBraceGeometry(rampWidth, rampHeight, rampLen, 2.4, 0.12);
-  const braceMat = toonMaterial(0x2b3340, { side: THREE.DoubleSide });
+  // Bare ramp wedge: omit protruding dark side braces and full-height skirts.
+  // The sloped deck and slim crosswise lip remain, avoiding the black-wall illusion.
   const slopeAngle = Math.atan2(rampHeight, rampLen);
   const slopeHypot = Math.hypot(rampLen, rampHeight);
 
@@ -2532,30 +2532,7 @@ function buildRamps(path, length, rampTs, themeId = 1) {
     mesh.castShadow = true;
     mesh.receiveShadow = true;
 
-    // Side support braces + LED neon guide rails along the inclined edges
-    for (const sx of [-1, 1]) {
-      const brace = new THREE.Mesh(braceGeo, braceMat);
-      brace.position.set(sx * (rampWidth / 2 + 0.05), 0, 0);
-      brace.castShadow = true;
-      mesh.add(brace);
-      const skirt = new THREE.Mesh(
-        new THREE.BoxGeometry(0.06, rampHeight, rampLen),
-        braceMat
-      );
-      skirt.position.set(sx * (rampWidth / 2 + 0.03), rampHeight / 2, 0);
-      skirt.castShadow = false;
-      mesh.add(skirt);
-
-      // Sloped LED edge rail (MK8D trick ramp signature)
-      const ledRail = new THREE.Mesh(
-        new THREE.BoxGeometry(0.14, 0.08, slopeHypot),
-        railLedMat
-      );
-      ledRail.rotation.x = -slopeAngle;
-      ledRail.position.set(sx * (rampWidth / 2 - 0.06), rampHeight / 2 + 0.03, 0);
-      mesh.add(ledRail);
-    }
-
+    // No side walls/vertical skirt meshes: these formed black barriers at ramp edges.
     // Glowing yellow/gold launch lip bar across the top edge of the ramp
     const lipBar = new THREE.Mesh(
       new THREE.BoxGeometry(rampWidth - 0.16, 0.08, 0.24),

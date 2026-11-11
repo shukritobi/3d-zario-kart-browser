@@ -48,6 +48,10 @@ export function createDefaultControllerPacket() {
     swapItem: false,
     pause: false,
     startRace: false,
+    menuX: 0,
+    menuY: 0,
+    menuConfirm: false,
+    menuBack: false,
     gyroEnabled: false,
     tiltDeg: 0,
   };
@@ -313,12 +317,35 @@ function loadPeerJS() {
   if (window.Peer) return Promise.resolve(window.Peer);
   if (_peerJsPromise) return _peerJsPromise;
   _peerJsPromise = new Promise((resolve) => {
-    const script = document.createElement('script');
-    script.src = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';
-    script.async = true;
-    script.onload = () => resolve(window.Peer || null);
-    script.onerror = () => resolve(null);
-    document.head.appendChild(script);
+    const sources = [
+      'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js',
+      'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js',
+    ];
+    const trySource = (i) => {
+      if (window.Peer) return resolve(window.Peer);
+      if (i >= sources.length) return resolve(null);
+      const script = document.createElement('script');
+      script.src = sources[i];
+      script.async = true;
+      let settled = false;
+      const fail = () => {
+        if (settled) return;
+        settled = true;
+        script.remove?.();
+        trySource(i + 1);
+      };
+      const timeout = setTimeout(fail, 3500);
+      script.onload = () => {
+        clearTimeout(timeout);
+        if (settled) return;
+        settled = true;
+        if (window.Peer) resolve(window.Peer);
+        else trySource(i + 1);
+      };
+      script.onerror = () => { clearTimeout(timeout); fail(); };
+      document.head.appendChild(script);
+    };
+    trySource(0);
   });
   return _peerJsPromise;
 }
@@ -339,6 +366,14 @@ export class SwitchHostBridge {
     this._edgeSwapPressed = false;
     this._edgePausePressed = false;
     this._edgeStartPressed = false;
+    this._edgeMenuX = 0;
+    this._edgeMenuY = 0;
+    this._edgeMenuConfirm = false;
+    this._edgeMenuBack = false;
+    this._prevRawMenuX = 0;
+    this._prevRawMenuY = 0;
+    this._prevRawMenuConfirm = false;
+    this._prevRawMenuBack = false;
     this._prevRawItem = false;
     this._prevRawSwap = false;
     this._prevRawPause = false;
@@ -394,8 +429,11 @@ export class SwitchHostBridge {
               this._peerConns.delete(conn);
             });
           });
+          peer.on('disconnected', () => {
+            if (this._started && !peer.destroyed) try { peer.reconnect(); } catch {}
+          });
           peer.on('error', () => {
-            // Silent fallback to LAN relay / BroadcastChannel
+            // LAN and BroadcastChannel remain available when P2P is unavailable.
           });
         } catch { /* ignore */ }
       });
@@ -407,6 +445,9 @@ export class SwitchHostBridge {
 
   stop() {
     this._started = false;
+    this.connected = false;
+    this.transport = 'disconnected';
+    this._conn = null;
     if (this._pollTimer) {
       clearInterval(this._pollTimer);
       this._pollTimer = null;
@@ -454,8 +495,16 @@ export class SwitchHostBridge {
         });
         if (!res.ok) return;
         const data = await res.json();
-        if (data && data.controllerInput && data.controllerInput.ts > this.lastPacketAt) {
-          this._handleIncomingPacket(data.controllerInput, 'LAN-Relay');
+        // Do NOT compare device timestamps to the host's Date.now().
+        // iPhone/Android and TV clocks can differ by minutes; use sequence
+        // numbers, or timestamp as fallback for legacy packets.
+        const packet = data?.controllerInput;
+        const seq = Number(packet?.seq);
+        const previousSeq = this.lastSeq;
+        if (packet && (!this.connected ||
+            (Number.isFinite(seq) && seq !== previousSeq) ||
+            (!Number.isFinite(seq) && packet.ts !== this.latestState.ts))) {
+          this._handleIncomingPacket(packet, 'LAN-Relay');
         }
       } catch {
         // Static build or offline
@@ -488,6 +537,18 @@ export class SwitchHostBridge {
     const rawSwap = !!packet.swapItem;
     const rawPause = !!packet.pause;
     const rawStart = !!packet.startRace;
+    const rawMenuX = Math.max(-1, Math.min(1, Math.round(Number(packet.menuX) || 0)));
+    const rawMenuY = Math.max(-1, Math.min(1, Math.round(Number(packet.menuY) || 0)));
+    const rawMenuConfirm = !!packet.menuConfirm;
+    const rawMenuBack = !!packet.menuBack;
+    if (rawMenuX && rawMenuX !== this._prevRawMenuX) this._edgeMenuX = rawMenuX;
+    if (rawMenuY && rawMenuY !== this._prevRawMenuY) this._edgeMenuY = rawMenuY;
+    if (rawMenuConfirm && !this._prevRawMenuConfirm) this._edgeMenuConfirm = true;
+    if (rawMenuBack && !this._prevRawMenuBack) this._edgeMenuBack = true;
+    this._prevRawMenuX = rawMenuX;
+    this._prevRawMenuY = rawMenuY;
+    this._prevRawMenuConfirm = rawMenuConfirm;
+    this._prevRawMenuBack = rawMenuBack;
 
     if (rawItem && !this._prevRawItem) this._edgeItemPressed = true;
     if (rawSwap && !this._prevRawSwap) this._edgeSwapPressed = true;
@@ -512,6 +573,10 @@ export class SwitchHostBridge {
       swapItem: rawSwap,
       pause: rawPause,
       startRace: rawStart,
+      menuX: rawMenuX,
+      menuY: rawMenuY,
+      menuConfirm: rawMenuConfirm,
+      menuBack: rawMenuBack,
       gyroEnabled: !!packet.gyroEnabled,
       tiltDeg: Number(packet.tiltDeg) || 0,
     };
@@ -523,7 +588,11 @@ export class SwitchHostBridge {
     if (!wasConnected) {
       zarioLogger.recordControllerConnect(this.roomCode, this.transport);
     }
-    this._emitStatus();
+    // Prevent the pairing QR/modal from rebuilding on every 30Hz packet.
+    if (!wasConnected || now - (this._lastStatusEmitAt || 0) > 1000) {
+      this._lastStatusEmitAt = now;
+      this._emitStatus();
+    }
   }
 
   /**
@@ -541,6 +610,14 @@ export class SwitchHostBridge {
     const swapItem = this._edgeSwapPressed;
     const pause = this._edgePausePressed;
     const startRace = this._edgeStartPressed;
+    const menuX = this._edgeMenuX;
+    const menuY = this._edgeMenuY;
+    const menuConfirm = this._edgeMenuConfirm;
+    const menuBack = this._edgeMenuBack;
+    this._edgeMenuX = 0;
+    this._edgeMenuY = 0;
+    this._edgeMenuConfirm = false;
+    this._edgeMenuBack = false;
     this._edgeItemPressed = false;
     this._edgeSwapPressed = false;
     this._edgePausePressed = false;
@@ -552,6 +629,10 @@ export class SwitchHostBridge {
       swapItem,
       pause,
       startRace,
+      menuX,
+      menuY,
+      menuConfirm,
+      menuBack,
     };
   }
 
@@ -667,7 +748,8 @@ export class SwitchClientBridge {
         try {
           const peer = new PeerClass({ debug: 0 });
           this._peer = peer;
-          peer.on('open', () => {
+          const connect = () => {
+            if (!this._started || peer.destroyed) return;
             const targetId = `${PEER_PREFIX}${this.roomCode}`;
             const conn = peer.connect(targetId, { reliable: false });
             this._conn = conn;
@@ -678,10 +760,21 @@ export class SwitchClientBridge {
               this.onStatus?.({ connected: true, transport: this.transport, roomCode: this.roomCode });
             });
             conn.on('data', (data) => {
-              if (data && data.type === 'host_telemetry') {
-                this._handleTelemetry(data, 'WebRTC-PeerJS');
-              }
+              if (data && data.type === 'host_telemetry') this._handleTelemetry(data, 'WebRTC-PeerJS');
             });
+            const reconnect = () => {
+              if (this._conn !== conn) return;
+              this.connected = false;
+              this.transport = 'reconnecting';
+              this.onStatus?.({ connected: false, transport: this.transport, roomCode: this.roomCode });
+              if (this._started) setTimeout(connect, 1100);
+            };
+            conn.on('close', reconnect);
+            conn.on('error', reconnect);
+          };
+          peer.on('open', connect);
+          peer.on('disconnected', () => {
+            if (this._started && !peer.destroyed) try { peer.reconnect(); } catch {}
           });
         } catch { /* ignore */ }
       });
@@ -698,6 +791,9 @@ export class SwitchClientBridge {
 
   stop() {
     this._started = false;
+    this.connected = false;
+    this.transport = 'disconnected';
+    this._conn = null;
     if (this._pollTimer) {
       clearInterval(this._pollTimer);
       this._pollTimer = null;
@@ -722,7 +818,7 @@ export class SwitchClientBridge {
         });
         if (!res.ok) return;
         const data = await res.json();
-        if (data && data.ok) {
+        if (data && data.ok && data.hostTelemetry) {
           if (!this.connected) {
             this.connected = true;
             this.transport = 'LAN-Relay';
@@ -763,6 +859,10 @@ export class SwitchClientBridge {
       swapItem: !!inputState.swapItem,
       pause: !!inputState.pause,
       startRace: !!inputState.startRace,
+      menuX: Math.max(-1, Math.min(1, Number(inputState.menuX) || 0)),
+      menuY: Math.max(-1, Math.min(1, Number(inputState.menuY) || 0)),
+      menuConfirm: !!inputState.menuConfirm,
+      menuBack: !!inputState.menuBack,
       gyroEnabled: !!inputState.gyroEnabled,
       tiltDeg: Number(inputState.tiltDeg) || 0,
     };
@@ -855,7 +955,7 @@ export function initSamsungTVAdaptation(hostBridge) {
 /**
  * Opens the Samsung TV + iPhone Nintendo Switch Controller Pairing Modal.
  */
-export function openTVPairingModal(hostBridge) {
+export function openTVPairingModal(hostBridge, hostBridge2 = window.__zarioSwitchHost2) {
   if (typeof document === 'undefined' || !hostBridge) return;
   let modal = document.getElementById('zario-switch-modal');
   if (!modal) {
@@ -867,14 +967,18 @@ export function openTVPairingModal(hostBridge) {
 
   const renderModalContent = () => {
     const status = hostBridge.getStatus();
-    const qrSvg = renderPairingQRCodeSvg(status.pairingUrl, 196);
+    const status2 = hostBridge2?.getStatus();
+    let splitOn = false;
+    try { splitOn = localStorage.getItem('zario.split2.v1') === '1'; } catch {}
+    const qrSvg = renderPairingQRCodeSvg(status.pairingUrl, 176);
+    const qrSvg2 = status2 ? renderPairingQRCodeSvg(status2.pairingUrl, 176) : '';
     const tvActive = document.body.classList.contains('zario-tv-mode');
     modal.innerHTML = `
       <div class="zario-switch-modal-card" role="dialog" aria-label="Samsung TV & iPhone Switch Controller Setup">
         <div class="zario-switch-modal-header">
           <div>
             <span class="zario-switch-badge">🎮 NINTENDO SWITCH MODE · SAMSUNG 45" TV</span>
-            <h2>Pair Your iPhone Wireless Controller</h2>
+            <h2>Pair iPhone / Android Controllers</h2>
           </div>
           <button type="button" class="zario-switch-close" id="zario-switch-close-btn">✕ Close</button>
         </div>
@@ -888,11 +992,21 @@ export function openTVPairingModal(hostBridge) {
             </div>
             <div class="zario-switch-conn-status ${status.connected ? 'is-connected' : 'is-waiting'}">
               ${status.connected
-                ? `✅ iPhone Connected (${status.transport})`
-                : '📡 Waiting for iPhone to scan QR or enter code...'}
+                ? `✅ P1 Connected (${status.transport})`
+                : '📡 P1 waiting for phone...'}
             </div>
           </div>
 
+          ${status2 ? `
+          <div class="zario-switch-qr-box">
+            <h3>PLAYER 2</h3>
+            <div class="zario-switch-qr-frame">${qrSvg2}</div>
+            <div class="zario-switch-room-pill"><span>ROOM CODE:</span><strong>${status2.roomCode}</strong></div>
+            <div class="zario-switch-conn-status ${status2.connected ? 'is-connected' : 'is-waiting'}">
+              ${status2.connected ? `✅ P2 Connected (${status2.transport})` : '📡 P2 waiting for phone...'}
+            </div>
+          </div>
+          ` : ''}
           <div class="zario-switch-steps">
             <h3>How to Play on Your 2021 45" Samsung Smart TV</h3>
             <ol>
@@ -908,6 +1022,7 @@ export function openTVPairingModal(hostBridge) {
             </ol>
 
             <div class="zario-switch-actions">
+              <button type="button" class="zario-switch-btn secondary" id="zario-toggle-split-btn">🕹 2-PLAYER SPLIT-SCREEN: ${splitOn ? 'ON' : 'OFF'}</button>
               <button type="button" class="zario-switch-btn primary" id="zario-toggle-tv-mode-btn">
                 📺 45" Samsung TV Safe-Area & 60fps Mode: <strong>${tvActive ? 'ON' : 'OFF'}</strong>
               </button>
@@ -922,6 +1037,12 @@ export function openTVPairingModal(hostBridge) {
 
     modal.querySelector('#zario-switch-close-btn')?.addEventListener('click', () => {
       modal.hidden = true;
+    });
+    modal.querySelector('#zario-toggle-split-btn')?.addEventListener('click', () => {
+      let enabled = false;
+      try { enabled = localStorage.getItem('zario.split2.v1') === '1'; } catch {}
+      window.__zarioSetSplitScreen?.(!enabled);
+      renderModalContent();
     });
     modal.querySelector('#zario-toggle-tv-mode-btn')?.addEventListener('click', () => {
       const next = !document.body.classList.contains('zario-tv-mode');
@@ -938,6 +1059,9 @@ export function openTVPairingModal(hostBridge) {
   if (!modal._subscribed) {
     modal._subscribed = true;
     hostBridge.onStatusChange(() => {
+      if (!modal.hidden) renderModalContent();
+    });
+    hostBridge2?.onStatusChange(() => {
       if (!modal.hidden) renderModalContent();
     });
   }

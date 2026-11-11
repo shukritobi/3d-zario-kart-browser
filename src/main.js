@@ -280,7 +280,7 @@ hud._onDriftReady = () => {
   audio.play('driftReady', { volume: 0.5 });
 };
 const menu = new Menu({
-  onStart: startRace,
+  onStart: () => { zarioControls.enableTiltForRace(); startRace(); },
   onColor: setPlayerColor,
   onSound: (n) => audio.play(n),
   onToggleMute: (muted) => audio.setMuted(muted), // AUDIT MED: single mute source (sets _muted + master + persists) — pause Sound and menu stay in sync
@@ -342,8 +342,18 @@ onStateChange((state) => document.body.classList.toggle(
 window.__zarioControlStatus = () => zarioControls.status();
 window.__zarioPerformance = () => renderer.userData.qualityReport();
 const switchHost = IS_CONTROLLER_CLIENT ? null : new SwitchHostBridge().start();
+// A separate room prevents P2 packets overwriting P1; each phone gets its own PeerJS ID.
+const switchHost2 = IS_CONTROLLER_CLIENT ? null : new SwitchHostBridge().start();
+let splitScreenEnabled = false;
+try { splitScreenEnabled = localStorage.getItem('zario.split2.v1') === '1'; } catch {}
+window.__zarioSetSplitScreen = (enabled) => {
+  splitScreenEnabled = !!enabled;
+  try { localStorage.setItem('zario.split2.v1', splitScreenEnabled ? '1' : '0'); } catch {}
+  return splitScreenEnabled;
+};
 window.__zarioSwitchHost = switchHost;
-window.__zarioOpenSwitchModal = () => openTVPairingModal(switchHost);
+window.__zarioSwitchHost2 = switchHost2;
+window.__zarioOpenSwitchModal = () => openTVPairingModal(switchHost, switchHost2);
 if (!IS_CONTROLLER_CLIENT) {
   initSamsungTVAdaptation(switchHost);
 }
@@ -771,6 +781,7 @@ async function buildKarts() {
 // Input (desktop keyboard)
 // ---------------------------------------------------------------------------
 const input = { steer: 0, throttle: 0, brake: false, drift: false, swapItem: false };
+let remoteP1Active = false;
 const keys = new Set();
 const REAR_HOLD_MS = CONFIG.items.rearHoldMs || 350; // hold ITEM to arm a rear throw
 
@@ -807,6 +818,7 @@ function readKeyboardInput() {
     input.drift = input.drift || pad.drift;
   }
   const sw = switchHost ? switchHost.sampleFrameInput() : null;
+  remoteP1Active = !!sw;
   if (sw) {
     if (Math.abs(sw.steer) > 0.02 || input.steer === 0) input.steer = sw.steer;
     if (sw.throttle > 0) input.throttle = Math.max(input.throttle, sw.throttle);
@@ -820,6 +832,69 @@ function readKeyboardInput() {
     if (sw.pause && (getState() === STATES.RACE || getState() === STATES.PAUSED)) {
       togglePause();
     }
+  }
+}
+
+// Two-phone split-screen: one phone controls the original player, the other
+// takes over the first rival kart. If phone 2 disconnects, CPU takes over.
+let secondPlayerKart = null;
+let deferredSplitFinish = null;
+function updateSecondPlayer() {
+  if (!secondPlayerKart || !raceManager || DEMO) return;
+  const controller = raceManager.aiControllers.find(c => c.kart === secondPlayerKart);
+  if (!splitScreenEnabled) {
+    secondPlayerKart.isPlayer = false;
+    if (!controller) raceManager.aiControllers.push(new AIController(secondPlayerKart, track, raceManager, 1));
+    return;
+  }
+  const packet = switchHost2?.sampleFrameInput();
+  if (!packet) {
+    secondPlayerKart.isPlayer = false;
+    if (!controller) raceManager.aiControllers.push(new AIController(secondPlayerKart, track, raceManager, 1));
+    return;
+  }
+  secondPlayerKart.isPlayer = true;
+  if (controller) raceManager.aiControllers = raceManager.aiControllers.filter(c => c.kart !== secondPlayerKart);
+  secondPlayerKart._gripMode = 'tight';
+  secondPlayerKart.setControls({
+    steer: packet.steer,
+    throttle: packet.brake ? 0 : packet.throttle,
+    brake: !!packet.brake,
+    drift: !!packet.drift,
+    swapItem: !!packet.swapItem,
+  });
+  if (packet.useItem) raceManager.useItem(secondPlayerKart);
+  if (packet.pause && (getState() === STATES.RACE || getState() === STATES.PAUSED)) togglePause();
+}
+
+function navigatePhoneMenu(packet) {
+  if (!packet || getState() !== STATES.MENU) return;
+  const modal = document.getElementById('zario-switch-modal');
+  const openModal = modal && !modal.hidden;
+  const scope = openModal ? modal : menu.root;
+  const visible = el => !el.disabled && !el.closest('.sk3d-hidden,[hidden]') &&
+    el.getClientRects().length > 0;
+  const items = [...scope.querySelectorAll('button, [role="radio"]')].filter(visible);
+  if (packet.menuBack) {
+    if (openModal) modal.hidden = true;
+    else menu.closeScreens?.();
+    return;
+  }
+  if (packet.menuX || packet.menuY) {
+    const dir = packet.menuX || packet.menuY;
+    const index = items.indexOf(document.activeElement);
+    const next = index < 0 ? (dir < 0 ? items.length - 1 : 0) :
+      (index + (dir < 0 ? -1 : 1) + items.length) % items.length;
+    items[next]?.focus?.();
+  }
+  if (packet.menuConfirm) {
+    const focused = document.activeElement;
+    if (items.includes(focused)) focused.click();
+    else (openModal ? items[0] : menu.startBtn)?.click?.();
+  }
+  if (packet.startRace && !openModal) {
+    zarioControls.enableTiltForRace();
+    startRace();
   }
 }
 
@@ -1134,6 +1209,9 @@ function startRaceInit() {
     audio,
     particles,
   });
+  // P2 occupies one existing roster slot, not an extra kart/physics instance.
+  secondPlayerKart = aiKarts[0] || null;
+  deferredSplitFinish = null;
   raceDiagnostics.start({
     trackId:TRACK_ID,trackLength:+track.length.toFixed(1),
     cc:settings.cc,quality:qualityProfile.name,
@@ -1154,6 +1232,13 @@ function startRaceInit() {
     hud.showMessage(tip);
   }
   raceManager.onPlayerFinish = (place, time) => {
+    // A two-player race continues until both human drivers have finished.
+    // The single-player result UI must not stop P2's camera mid-lap.
+    if (splitScreenEnabled && switchHost2?.connected && secondPlayerKart && !secondPlayerKart.finished) {
+      deferredSplitFinish = { place, time };
+      return;
+    }
+    deferredSplitFinish = null;
     raceDiagnostics.event('finish',{place,time});
     // AUDIT MED: hide touch controls at FINISHED — the DRIFT button (z 120)
     // sat over the finish card (z 3) and stole taps from Race Again/Menu.
@@ -1250,6 +1335,8 @@ function togglePause() {
 }
 
 function restartRace() {
+  deferredSplitFinish = null;
+  secondPlayerKart = aiKarts[0] || null;
   clearTimeout(window.__victoryTimer);
   audio.setResultMusic?.(null);
   audio.clearEngineLoops(); // restart engine sounds from scratch (no echo/doubling)
@@ -1292,6 +1379,8 @@ function restartRace() {
 }
 
 function gotoMenu() {
+  deferredSplitFinish = null;
+  document.body.classList.remove('zario-splitscreen');
   clearTimeout(window.__victoryTimer);
   audio.setResultMusic?.(null);
   raceManager.phase = 'idle';
@@ -1497,6 +1586,78 @@ function addShake(mag, duration) {
 // ---------------------------------------------------------------------------
 // Main loop
 // ---------------------------------------------------------------------------
+const secondCamera = camera.clone();
+const splitRenderSize = new THREE.Vector2();
+const splitCamTarget = new THREE.Vector3();
+const splitLabels = document.createElement('div');
+splitLabels.innerHTML = '<span class="zario-split-label p1" data-p1>P1</span><span class="zario-split-label p2" data-p2>P2</span><div class="zario-split-divider"></div>';
+splitLabels.style.display = 'none';
+document.body.append(splitLabels);
+let splitRenderedLastFrame = false;
+function renderWithOptionalSplit(dt) {
+  const racing = [STATES.COUNTDOWN, STATES.RACE].includes(getState());
+  const enabled = splitScreenEnabled && !!secondPlayerKart && racing && !DEMO;
+  document.body.classList.toggle('zario-splitscreen', enabled);
+  splitLabels.style.display = enabled ? 'contents' : 'none';
+  if (!enabled) {
+    if (splitRenderedLastFrame) {
+      renderer.getDrawingBufferSize(splitRenderSize);
+      camera.aspect = splitRenderSize.x / Math.max(1, splitRenderSize.y);
+      camera.updateProjectionMatrix();
+      renderer.setViewport(0, 0, splitRenderSize.x, splitRenderSize.y);
+      renderer.setScissorTest(false);
+    }
+    splitRenderedLastFrame = false;
+    postfx.render(dt);
+    return;
+  }
+  // Render two actual player-camera views into one WebGL canvas on the TV.
+  // Disable multipass bloom while splitting: the postprocess composer owns
+  // full-sized framebuffers and would overwrite adjacent scissor regions.
+  renderer.getDrawingBufferSize(splitRenderSize);
+  const fullW = splitRenderSize.x, fullH = splitRenderSize.y;
+  const leftW = Math.floor(fullW / 2), rightW = fullW - leftW;
+  camera.aspect = leftW / Math.max(1, fullH);
+  camera.updateProjectionMatrix();
+  const st = secondPlayerKart.state;
+  const yaw = st.heading || 0;
+  const roadY = typeof st.groundY === 'number' ? st.groundY : st.position.y;
+  const dist = CONFIG.camera.followDistance * 1.12;
+  const targetX = st.position.x - Math.sin(yaw) * dist;
+  const targetZ = st.position.z - Math.cos(yaw) * dist;
+  secondCamera.position.lerp(splitCamTarget.set(targetX, roadY + CONFIG.camera.followHeight, targetZ),
+    Math.min(1, dt * 10));
+  secondCamera.lookAt(st.position.x + Math.sin(yaw) * 2, roadY + CONFIG.camera.lookHeight,
+    st.position.z + Math.cos(yaw) * 2);
+  secondCamera.fov = camera.fov;
+  secondCamera.aspect = rightW / Math.max(1, fullH);
+  secondCamera.updateProjectionMatrix();
+  renderer.setScissorTest(true);
+  renderer.setViewport(0, 0, leftW, fullH);
+  renderer.setScissor(0, 0, leftW, fullH);
+  renderer.render(scene, camera);
+  renderer.setViewport(leftW, 0, rightW, fullH);
+  renderer.setScissor(leftW, 0, rightW, fullH);
+  renderer.render(scene, secondCamera);
+  renderer.setScissorTest(false);
+  renderer.setViewport(0, 0, fullW, fullH);
+  const p1Label = splitLabels.querySelector('[data-p1]');
+  const p2Label = splitLabels.querySelector('[data-p2]');
+  const splitHudLabel = (kart, label) => {
+    if (!kart?.state) return label;
+    const rank = Number(kart.position) || '?';
+    const lap = Math.min(CONFIG.game.totalLaps, Math.max(1, Number(kart.state.lap || kart.lap || 0) + 1));
+    const item = kart.heldItem || kart.heldItem2;
+    return label + ' · ' + rank + '/' + raceManager.karts.length +
+      ' · LAP ' + lap + '/' + CONFIG.game.totalLaps +
+      ' · ' + Math.round(Math.abs(kart.state.speed || 0) * 2.4) + ' km/h' +
+      (item ? ' · 🎁' : '');
+  };
+  if (p1Label) p1Label.textContent = splitHudLabel(playerKart, 'P1');
+  if (p2Label) p2Label.textContent = splitHudLabel(secondPlayerKart, 'P2');
+  splitRenderedLastFrame = true;
+}
+
 const loop = new GameLoop();
 let menuAngle = 0;
 let qaFrameN = 0; // QA: frame counter exposed via __sk3d (perf diagnostics)
@@ -1531,10 +1692,17 @@ loop.start((dt, t) => {
     const r = 30;
     camera.position.set(Math.cos(menuAngle) * r, 14, Math.sin(menuAngle) * r);
     camera.lookAt(0, 3, 0);
-    const swMenu = switchHost ? switchHost.sampleFrameInput() : null;
-    if (swMenu && swMenu.startRace) {
-      startRace();
-    }
+    // Both phones can operate the game and racer/track menus on the host.
+    navigatePhoneMenu(switchHost?.sampleFrameInput());
+    navigatePhoneMenu(switchHost2?.sampleFrameInput());
+  }
+
+  if (state === STATES.PAUSED) {
+    // Phone controllers must still receive their Start/Pause edges while
+    // physics is paused; the race input loop does not run in this state.
+    const p1 = switchHost?.sampleFrameInput();
+    const p2 = switchHost2?.sampleFrameInput();
+    if (p1?.pause || p1?.startRace || p2?.pause || p2?.startRace) togglePause();
   }
 
   if (state === STATES.COUNTDOWN) {
@@ -1592,7 +1760,7 @@ loop.start((dt, t) => {
       if (!DEMO) {
         readKeyboardInput();
         const gyroSteer = zarioControls.tiltEnabled ? zarioControls.getSteer() : null;
-        let steer = zarioControls.gamepadActive ? input.steer : (gyroSteer !== null ? gyroSteer : (isTouchMode() ? touchSteer : input.steer));
+        let steer = remoteP1Active ? input.steer : (zarioControls.gamepadActive ? input.steer : (gyroSteer !== null ? gyroSteer : (isTouchMode() ? touchSteer : input.steer)));
         steer = zarioControls.applySteer(steer);
         zarioControls.showSteer(steer);
         if (playerKart) playerKart._gripMode = zarioControls.gripMode;
@@ -1617,7 +1785,7 @@ loop.start((dt, t) => {
           }
         }
         // Auto-accelerate (accessibility): keep the gas pinned unless braking.
-        const rawThrottle = zarioControls.gamepadActive ? (input.brake ? -1 : input.throttle) : (isTouchMode() ? 1 : input.throttle || (input.brake ? -1 : 0));
+        const rawThrottle = (remoteP1Active || zarioControls.gamepadActive) ? (input.brake ? -1 : input.throttle) : (isTouchMode() ? 1 : input.throttle || (input.brake ? -1 : 0));
         const effThrottle = settings.autoAccel ? (input.brake ? -1 : 1) : rawThrottle;
         // Character stats → physics (audit r3): accel scales throttle input,
         // handling scales steer authority; speed is applied as cruiseSpeed.
@@ -1647,7 +1815,13 @@ loop.start((dt, t) => {
       // AUDIT r11 (#6, code audit): RaceManager.update() already drives the
       // AI controllers every frame — a second loop here DOUBLED item-use
       // accumulation (effective itemUseChancePerSec 2x) and re-ran steering.
+      updateSecondPlayer();
       raceManager.update(dt);
+      if (deferredSplitFinish && (secondPlayerKart?.finished || !switchHost2?.connected || !splitScreenEnabled)) {
+        const result = deferredSplitFinish;
+        deferredSplitFinish = null;
+        raceManager.onPlayerFinish(result.place, result.time);
+      }
       audio.setStarMusic?.(!!(playerKart && playerKart.starred));
       raceDiagnostics.tick({
         dt,player:playerKart,frameMs:loop.frameAverageMs,
@@ -1683,6 +1857,19 @@ loop.start((dt, t) => {
           speedKmh: Math.abs(playerKart.state.speed || 0) * 2.4,
           heldItem: playerKart.heldItem || playerKart.heldItem2 || null,
           coins: playerKart.state.coins || 0,
+          trackName: TRACK_NAMES[TRACK_ID] || 'Meadow Circuit',
+        });
+      }
+      if (switchHost2 && switchHost2.connected && qaFrameN % 10 === 0 && secondPlayerKart) {
+        const k2 = secondPlayerKart;
+        switchHost2.broadcastTelemetry({
+          slot: 2,
+          position: k2.position || 1,
+          lap: Math.min(CONFIG.game.totalLaps, Math.max(1, (k2.lap || 0) + 1)),
+          totalLaps: CONFIG.game.totalLaps,
+          speedKmh: Math.abs(k2.state.speed || 0) * 2.4,
+          heldItem: k2.heldItem || k2.heldItem2 || null,
+          coins: k2.state.coins || 0,
           trackName: TRACK_NAMES[TRACK_ID] || 'Meadow Circuit',
         });
       }
@@ -1890,7 +2077,7 @@ loop.start((dt, t) => {
   if (!terminalPresentation) {
     skids.update(dt);
   }
-  postfx.render(dt);
+  renderWithOptionalSplit(dt);
 
   if (window.__profEnabled) {
     const _now = performance.now();
