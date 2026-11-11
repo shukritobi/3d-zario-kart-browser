@@ -1,0 +1,17 @@
+name: Zario Asset Contract
+on:
+  pull_request:
+    paths:
+      - 'public/models/zario/**'
+      - 'tools/zario/**'
+      - '.github/workflows/check-zario-assets.yml'
+  workflow_dispatch:
+jobs:
+  manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node tools/zario/check-zario-assets.mjs
