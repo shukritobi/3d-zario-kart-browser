@@ -260,10 +260,8 @@ export function mountControllerApp(rootContainer) {
       pulseFeedback(25);
     }
   };
-  roomBtn?.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    pairRoom();
-  });
+  // One event per gesture: pointerdown + synthetic click used to restart
+  // the peer connection twice on iOS, making pairing appear unstable.
   roomBtn?.addEventListener('click', (e) => {
     e.preventDefault();
     pairRoom();
@@ -443,6 +441,9 @@ export function mountControllerApp(rootContainer) {
   const recenterBtn = ui.querySelector('#zc-btn-recenter');
   let gyroNeutral = null;
   let lastSensorAt = 0;
+  let lastGyroFlickAt = 0;
+  let lastGyroFlickDir = 0;
+  let gyroFlickArmed = true;
   let permissionAttempted = false;
   let userDisabledGyro = false;
   try { userDisabledGyro = localStorage.getItem('zario.phone.gyro.v2') === 'off'; } catch {}
@@ -463,6 +464,24 @@ export function mountControllerApp(rootContainer) {
     const target = tiltToSteer(raw, gyroNeutral, {deadZone: 3.2, fullSteer: 32});
     state.gyroSteer += 0.36 * (target - state.gyroSteer);
     state.tiltDeg = raw - gyroNeutral;
+    // Optional gyro flick-flick to drift: two deliberate flicks in the same
+    // direction within 420ms, each returning near centre in between.
+    // Use hysteresis to avoid counting normal jitter as a double flick.
+    const now = performance.now();
+    if (Math.abs(target) < 0.23) gyroFlickArmed = true;
+    if (gyroFlickArmed && Math.abs(target) > 0.75) {
+      const dir = Math.sign(target);
+      if (dir === lastGyroFlickDir && now - lastGyroFlickAt > 85 && now - lastGyroFlickAt < 420) {
+        autoDriftUntil = now + 1000;
+        pulseFeedback(25);
+        lastGyroFlickAt = 0;
+        lastGyroFlickDir = 0;
+      } else {
+        lastGyroFlickAt = now;
+        lastGyroFlickDir = dir;
+      }
+      gyroFlickArmed = false;
+    }
   };
   window.addEventListener('deviceorientation', handleOrientation, {passive: true});
   const syncGyro = (label) => {
@@ -497,9 +516,12 @@ export function mountControllerApp(rootContainer) {
   // controller interaction supplies the gesture, and rejection leaves D-pad on.
   if (typeof DeviceOrientationEvent !== 'undefined' &&
       typeof DeviceOrientationEvent.requestPermission !== 'function') enableGyro();
-  ui.addEventListener('pointerdown', () => {
+  ui.addEventListener('pointerdown', (e) => {
+    // Explicit GYRO button owns its own request. Otherwise iOS could see two
+    // permission calls during the same gesture, flipping the toggle OFF.
+    if (e.target.closest('#zc-btn-gyro')) return;
     if (!permissionAttempted && !userDisabledGyro) enableGyro();
-  }, {once: true, capture: true});
+  }, {capture: true});
   bindTapButton('#zc-btn-gyro', () => {
     if (state.gyroEnabled) {
       userDisabledGyro = true;
