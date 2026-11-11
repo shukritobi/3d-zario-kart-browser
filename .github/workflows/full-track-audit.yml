@@ -1,5 +1,10 @@
 name: Full six-track Zario Kart audit
 on:
+  # Automatically run once on first merge of this workflow to main.
+  # Subsequent normal code pushes do not trigger the expensive full-race suite.
+  push:
+    branches: [main]
+    paths: ['.github/workflows/full-track-audit.yml']
   workflow_dispatch:
   # Sunday 02:00 Malaysia time (18:00 UTC Saturday)
   schedule:
