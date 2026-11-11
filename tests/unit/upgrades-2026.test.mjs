@@ -254,9 +254,12 @@ test('Ramp & Trick Camera Anti-Dizziness: kart.state.groundY tracks road baselin
   kart.state.speed = 32;
 
   let sawAirborneTrick = false;
+  let trickPressed = false;
   for (let i = 0; i < 65; i++) {
-    kart.setControls({ steer: 0, throttle: 1, brake: false, drift: true });
+    const requestTrick = !trickPressed && kart._airTime > 0.1;
+    kart.setControls({ steer: 0, throttle: 1, brake: false, drift: requestTrick });
     kart.update(1 / 60, { track });
+    if (requestTrick) trickPressed = true;
     if (kart._trickAnimT > 0.1) sawAirborneTrick = true;
     assert.equal(typeof kart.state.groundY, 'number', 'kart.state.groundY must always be populated for steady camera anchoring');
     const airLift = Math.max(0, kart.state.position.y - kart.state.groundY);
