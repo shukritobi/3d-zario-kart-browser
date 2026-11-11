@@ -838,6 +838,7 @@ function readKeyboardInput() {
 // Two-phone split-screen: one phone controls the original player, the other
 // takes over the first rival kart. If phone 2 disconnects, CPU takes over.
 let secondPlayerKart = null;
+let deferredSplitFinish = null;
 function updateSecondPlayer() {
   if (!secondPlayerKart || !raceManager || DEMO) return;
   const controller = raceManager.aiControllers.find(c => c.kart === secondPlayerKart);
@@ -1210,6 +1211,7 @@ function startRaceInit() {
   });
   // P2 occupies one existing roster slot, not an extra kart/physics instance.
   secondPlayerKart = aiKarts[0] || null;
+  deferredSplitFinish = null;
   raceDiagnostics.start({
     trackId:TRACK_ID,trackLength:+track.length.toFixed(1),
     cc:settings.cc,quality:qualityProfile.name,
@@ -1230,6 +1232,13 @@ function startRaceInit() {
     hud.showMessage(tip);
   }
   raceManager.onPlayerFinish = (place, time) => {
+    // A two-player race continues until both human drivers have finished.
+    // The single-player result UI must not stop P2's camera mid-lap.
+    if (splitScreenEnabled && switchHost2?.connected && secondPlayerKart && !secondPlayerKart.finished) {
+      deferredSplitFinish = { place, time };
+      return;
+    }
+    deferredSplitFinish = null;
     raceDiagnostics.event('finish',{place,time});
     // AUDIT MED: hide touch controls at FINISHED — the DRIFT button (z 120)
     // sat over the finish card (z 3) and stole taps from Race Again/Menu.
@@ -1326,6 +1335,7 @@ function togglePause() {
 }
 
 function restartRace() {
+  deferredSplitFinish = null;
   secondPlayerKart = aiKarts[0] || null;
   clearTimeout(window.__victoryTimer);
   audio.setResultMusic?.(null);
@@ -1369,6 +1379,7 @@ function restartRace() {
 }
 
 function gotoMenu() {
+  deferredSplitFinish = null;
   document.body.classList.remove('zario-splitscreen');
   clearTimeout(window.__victoryTimer);
   audio.setResultMusic?.(null);
@@ -1796,6 +1807,11 @@ loop.start((dt, t) => {
       // accumulation (effective itemUseChancePerSec 2x) and re-ran steering.
       updateSecondPlayer();
       raceManager.update(dt);
+      if (deferredSplitFinish && (secondPlayerKart?.finished || !switchHost2?.connected || !splitScreenEnabled)) {
+        const result = deferredSplitFinish;
+        deferredSplitFinish = null;
+        raceManager.onPlayerFinish(result.place, result.time);
+      }
       audio.setStarMusic?.(!!(playerKart && playerKart.starred));
       raceDiagnostics.tick({
         dt,player:playerKart,frameMs:loop.frameAverageMs,
