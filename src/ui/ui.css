@@ -3389,3 +3389,26 @@ body.zc-controller-body-lock {
 .zario-split-label.p2 { left:52%; }
 .zario-split-divider { position:fixed; top:0; bottom:0; left:50%; width:3px; z-index:19; background:#ffffff70; pointer-events:none; }
 body.zario-splitscreen .sk3d-hud { opacity:.3; pointer-events:none; }
+
+/* Dual-phone pairing layout; two scannable rooms fit side by side on TV. */
+.zario-switch-modal-card { width:min(1110px,96vw); }
+.zario-switch-grid {
+  grid-template-columns:minmax(180px,205px) minmax(180px,205px) minmax(260px,1fr);
+  gap:clamp(9px,1.4vw,18px); align-items:start;
+}
+.zario-switch-qr-frame svg { max-width:100%; height:auto; }
+.zario-switch-qr-box { min-width:0; padding:10px; gap:7px; }
+.zario-switch-steps { min-width:0; }
+.zario-switch-steps ol { font-size:clamp(12px,1.45vw,15px); }
+.zario-switch-btn { font-size:clamp(12px,1.35vw,15px); padding:8px 11px; }
+@media(max-width:850px) {
+  .zario-switch-modal-card { padding:12px; }
+  .zario-switch-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .zario-switch-steps { grid-column:1/-1; }
+}
+@media(max-width:480px) {
+  .zario-switch-grid { grid-template-columns:1fr; }
+  .zario-switch-modal-backdrop { padding:4px; }
+  .zario-switch-qr-box { width:100%; }
+  .zario-switch-steps { grid-column:auto; }
+}
