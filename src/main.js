@@ -839,9 +839,14 @@ function readKeyboardInput() {
 // takes over the first rival kart. If phone 2 disconnects, CPU takes over.
 let secondPlayerKart = null;
 function updateSecondPlayer() {
-  if (!splitScreenEnabled || !secondPlayerKart || !raceManager || DEMO) return;
-  const packet = switchHost2?.sampleFrameInput();
+  if (!secondPlayerKart || !raceManager || DEMO) return;
   const controller = raceManager.aiControllers.find(c => c.kart === secondPlayerKart);
+  if (!splitScreenEnabled) {
+    secondPlayerKart.isPlayer = false;
+    if (!controller) raceManager.aiControllers.push(new AIController(secondPlayerKart, track, raceManager, 1));
+    return;
+  }
+  const packet = switchHost2?.sampleFrameInput();
   if (!packet) {
     secondPlayerKart.isPlayer = false;
     if (!controller) raceManager.aiControllers.push(new AIController(secondPlayerKart, track, raceManager, 1));
@@ -1669,6 +1674,14 @@ loop.start((dt, t) => {
     // Both phones can operate the game and racer/track menus on the host.
     navigatePhoneMenu(switchHost?.sampleFrameInput());
     navigatePhoneMenu(switchHost2?.sampleFrameInput());
+  }
+
+  if (state === STATES.PAUSED) {
+    // Phone controllers must still receive their Start/Pause edges while
+    // physics is paused; the race input loop does not run in this state.
+    const p1 = switchHost?.sampleFrameInput();
+    const p2 = switchHost2?.sampleFrameInput();
+    if (p1?.pause || p1?.startRace || p2?.pause || p2?.startRace) togglePause();
   }
 
   if (state === STATES.COUNTDOWN) {
