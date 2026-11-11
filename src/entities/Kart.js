@@ -2046,6 +2046,8 @@ export class Kart {
     this._wasDrafting = false;
     this._airTime = 0;
     this._trickArmed = false;
+    this._trickBtnWasDown = false;
+    this._trickAnimT = 0;
     this._prevY = 0;
     this._offRoadT = 0; // AUDIT r3: no grass-exit kick from the previous race
     this._nudgeVel.set(0, 0, 0);
