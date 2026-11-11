@@ -781,6 +781,7 @@ async function buildKarts() {
 // Input (desktop keyboard)
 // ---------------------------------------------------------------------------
 const input = { steer: 0, throttle: 0, brake: false, drift: false, swapItem: false };
+let remoteP1Active = false;
 const keys = new Set();
 const REAR_HOLD_MS = CONFIG.items.rearHoldMs || 350; // hold ITEM to arm a rear throw
 
@@ -817,6 +818,7 @@ function readKeyboardInput() {
     input.drift = input.drift || pad.drift;
   }
   const sw = switchHost ? switchHost.sampleFrameInput() : null;
+  remoteP1Active = !!sw;
   if (sw) {
     if (Math.abs(sw.steer) > 0.02 || input.steer === 0) input.steer = sw.steer;
     if (sw.throttle > 0) input.throttle = Math.max(input.throttle, sw.throttle);
@@ -1570,6 +1572,7 @@ function addShake(mag, duration) {
 // ---------------------------------------------------------------------------
 const secondCamera = camera.clone();
 const splitRenderSize = new THREE.Vector2();
+const splitCamTarget = new THREE.Vector3();
 const splitLabels = document.createElement('div');
 splitLabels.innerHTML = '<span class="zario-split-label p1" data-p1>P1</span><span class="zario-split-label p2" data-p2>P2</span><div class="zario-split-divider"></div>';
 splitLabels.style.display = 'none';
@@ -1606,7 +1609,7 @@ function renderWithOptionalSplit(dt) {
   const dist = CONFIG.camera.followDistance * 1.12;
   const targetX = st.position.x - Math.sin(yaw) * dist;
   const targetZ = st.position.z - Math.cos(yaw) * dist;
-  secondCamera.position.lerp(new THREE.Vector3(targetX, roadY + CONFIG.camera.followHeight, targetZ),
+  secondCamera.position.lerp(splitCamTarget.set(targetX, roadY + CONFIG.camera.followHeight, targetZ),
     Math.min(1, dt * 10));
   secondCamera.lookAt(st.position.x + Math.sin(yaw) * 2, roadY + CONFIG.camera.lookHeight,
     st.position.z + Math.cos(yaw) * 2);
@@ -1723,7 +1726,7 @@ loop.start((dt, t) => {
       if (!DEMO) {
         readKeyboardInput();
         const gyroSteer = zarioControls.tiltEnabled ? zarioControls.getSteer() : null;
-        let steer = zarioControls.gamepadActive ? input.steer : (gyroSteer !== null ? gyroSteer : (isTouchMode() ? touchSteer : input.steer));
+        let steer = remoteP1Active ? input.steer : (zarioControls.gamepadActive ? input.steer : (gyroSteer !== null ? gyroSteer : (isTouchMode() ? touchSteer : input.steer)));
         steer = zarioControls.applySteer(steer);
         zarioControls.showSteer(steer);
         if (playerKart) playerKart._gripMode = zarioControls.gripMode;
@@ -1748,7 +1751,7 @@ loop.start((dt, t) => {
           }
         }
         // Auto-accelerate (accessibility): keep the gas pinned unless braking.
-        const rawThrottle = zarioControls.gamepadActive ? (input.brake ? -1 : input.throttle) : (isTouchMode() ? 1 : input.throttle || (input.brake ? -1 : 0));
+        const rawThrottle = (remoteP1Active || zarioControls.gamepadActive) ? (input.brake ? -1 : input.throttle) : (isTouchMode() ? 1 : input.throttle || (input.brake ? -1 : 0));
         const effThrottle = settings.autoAccel ? (input.brake ? -1 : 1) : rawThrottle;
         // Character stats → physics (audit r3): accel scales throttle input,
         // handling scales steer authority; speed is applied as cruiseSpeed.
