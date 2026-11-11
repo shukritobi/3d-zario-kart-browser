@@ -661,23 +661,9 @@ export class KartPhysics {
       // Mario Kart ramp dash boost on launch
       const rampBoostMs = 480;
       kart.applyBoost?.(rampBoostMs);
-      // Auto-arm trick if player is holding drift/hop or throttle on the ramp lip
-      if (input.drift || input.throttle) {
-        kart._trickArmed = true;
-        if (!kart._trickAnimT || kart._trickAnimT <= 0) {
-          kart._trickAnimT = 0.001;
-          kart._trickCount = (kart._trickCount || 0) + 1;
-          kart._trickType = kart._trickCount % 2 === 0 ? 'roll' : 'flip';
-          if (kart.isPlayer) {
-            zarioLogger.recordTrick('player', {
-              phase: 'start',
-              trickType: kart._trickType,
-              speed: Math.round(s.speed * 100) / 100,
-              vY: Math.round(launchVy * 100) / 100,
-            });
-          }
-        }
-      }
+      // Ramp launches grant airtime and a short launch boost, not an
+      // automatic stunt. A fresh airborne DRIFT press in Kart.update is the
+      // only intentional opt-in trigger for an aerial flip/roll.
       kart._onPhysicsEvent?.({
         type: 'rampLaunch',
         speed: s.speed,
