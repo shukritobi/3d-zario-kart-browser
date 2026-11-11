@@ -18,6 +18,13 @@ import { zarioLogger } from '../game/ZarioLogger.js';
 
 const ROOM_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const PEER_PREFIX = 'zariokart-tv-2026-';
+// The /api relay is a Vite-only endpoint. GitHub Pages returns a 404 at
+// 30 Hz otherwise; sending those requests wastes phone battery and bandwidth.
+function hasLocalRelay() {
+  if (typeof location === 'undefined') return false;
+  const host = String(location.hostname || '');
+  return /^(localhost|127\.0\.0\.1|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host);
+}
 
 export function generateRoomCode(len = 4) {
   let code = '';
@@ -356,7 +363,17 @@ function loadPeerJS() {
  */
 export class SwitchHostBridge {
   constructor(options = {}) {
-    this.roomCode = normalizeRoomCode(options.roomCode) || generateRoomCode(4);
+    let storedRoom = '';
+    if (options.storageKey) {
+      try { storedRoom = normalizeRoomCode(localStorage.getItem(options.storageKey)); } catch {}
+    }
+    this.roomCode = normalizeRoomCode(options.roomCode) || storedRoom || generateRoomCode(4);
+    if (options.storageKey) {
+      try { localStorage.setItem(options.storageKey, this.roomCode); } catch {}
+    }
+    this._diag = { startedAt: new Date().toISOString(), events: [], packets: 0,
+      gyroPackets: 0, lastGyro: null, lastPacketAgeMs: null };
+    this._recordDiag('host-created', { room: this.roomCode });
     this.connected = false;
     this.transport = 'waiting';
     this.lastPacketAt = 0;
@@ -387,6 +404,22 @@ export class SwitchHostBridge {
     this._started = false;
   }
 
+  _recordDiag(type, fields = {}) {
+    if (!this._diag) return;
+    this._diag.events.push({ at: new Date().toISOString(), type, ...fields });
+    if (this._diag.events.length > 140) this._diag.events.shift();
+  }
+
+  diagnosticReport() {
+    return {
+      ...this.getStatus(),
+      events: this._diag.events.slice(),
+      packetsReceived: this._diag.packets,
+      gyroPacketsReceived: this._diag.gyroPackets,
+      lastGyro: this._diag.lastGyro,
+    };
+  }
+
   start() {
     if (this._started) return this;
     this._started = true;
@@ -407,7 +440,7 @@ export class SwitchHostBridge {
     }
 
     // 2. Local Vite LAN Relay polling + LAN IP discovery
-    if (typeof window !== 'undefined' && typeof fetch !== 'undefined') {
+    if (hasLocalRelay() && typeof fetch !== 'undefined') {
       this._discoverLanInfo();
       this._startLanPolling();
     }
@@ -520,6 +553,7 @@ export class SwitchHostBridge {
     this.connected = true;
     this.transport = transportName || this.transport;
     this.lastPacketAt = now;
+    if (!wasConnected) this._recordDiag('phone-connected', { transport: this.transport });
 
     if (packet.type === 'controller_hello') {
       if (!wasConnected) {
@@ -581,6 +615,22 @@ export class SwitchHostBridge {
       tiltDeg: Number(packet.tiltDeg) || 0,
     };
     this.lastSeq = this.latestState.seq;
+    this._diag.packets++;
+    if (this.latestState.gyroEnabled) this._diag.gyroPackets++;
+    const gyroStatus = {
+      enabled: !!packet.gyroEnabled,
+      sensorState: String(packet.sensorState || 'unknown').slice(0, 40),
+      sensorAgeMs: Number.isFinite(packet.sensorAgeMs) ? Math.round(packet.sensorAgeMs) : null,
+      permissionState: String(packet.permissionState || 'unknown').slice(0, 40),
+      eventCount: Number(packet.sensorEventCount) || 0,
+      screenAngle: Number(packet.screenAngle) || 0,
+      tiltDeg: Number(packet.tiltDeg) || 0,
+    };
+    if (!this._diag.lastGyro || this._diag.lastGyro.sensorState !== gyroStatus.sensorState ||
+        this._diag.lastGyro.permissionState !== gyroStatus.permissionState) {
+      this._recordDiag('gyro-status', gyroStatus);
+    }
+    this._diag.lastGyro = gyroStatus;
 
     const latencyMs = packet.ts ? Math.max(0, Math.min(999, now - Number(packet.ts))) : 0;
     zarioLogger.recordControllerPacket(latencyMs);
@@ -603,6 +653,7 @@ export class SwitchHostBridge {
     if (!this.connected) return null;
     if (Date.now() - this.lastPacketAt > 3500) {
       this.connected = false;
+      this._recordDiag('phone-timeout', { msSinceLastPacket: Date.now() - this.lastPacketAt });
       this._emitStatus();
       return null;
     }
@@ -683,6 +734,9 @@ export class SwitchHostBridge {
       pairingUrl: this.getPairingUrl(),
       lanOrigins: this.lanOrigins,
       latestState: this.latestState,
+      lastPacketAgeMs: this.lastPacketAt ? Date.now() - this.lastPacketAt : null,
+      packetCount: this._diag.packets,
+      gyroStatus: this._diag.lastGyro,
     };
   }
 }
