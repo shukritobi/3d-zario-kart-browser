@@ -2163,6 +2163,34 @@ window.__sk3d = {
       countdownT = COUNTDOWN_STEP * COUNTDOWN_MARKS.length;
     }
   },
+  // CI-only deterministic whole-track driving. The existing DEMO AI controls
+  // the player, but physics advances much faster than real time while the RAF
+  // loop is stopped. Render only when the test requests a screenshot.
+  qaStep: (dt = 1 / 30, draw = false) => {
+    if (!DEMO || !new URLSearchParams(location.search).has('audit'))
+      throw new Error('qaStep requires ?demo=1&audit=1');
+    if (getState() !== STATES.RACE || !playerKart)
+      return {state:getState(), finished:getState()===STATES.FINISHED};
+    const step = Math.min(1/30, Math.max(1/120, Number(dt) || 1/30));
+    raceManager.update(step);
+    raceDiagnostics.tick({
+      dt:step, player:playerKart, frameMs:step*1000,
+      audioState:audio.diagnostics().state,
+      pixelRatio:renderer.getPixelRatio(),
+      calls:renderer.info.render.calls,
+    });
+    if (draw) {
+      updateCamera(step, raceManager.elapsed);
+      postfx.render(step);
+    }
+    const st = playerKart.state;
+    return {state:getState(), phase:raceManager.phase,
+      lap:st.lap, progress:st.progress01,
+      position:{x:st.position.x,y:st.position.y,z:st.position.z},
+      speed:st.speed, seconds:raceDiagnostics.snapshot().seconds,
+      finished:!!playerKart.finished};
+  },
+
   settings, // QA: current difficulty/assist settings { cc, autoAccel, steerAssist }
   setPlayerColor, // QA: kart paint override (roster color validation)
   updateCamera, // QA hook: can be stubbed to freeze the chase camera
