@@ -95,7 +95,7 @@ export function mountControllerApp(rootContainer) {
     connection: clientBridge.diagnosticReport(),
     controller: {...state},
     events: debugEvents.slice(),
-  };
+  });
   const downloadDebug = () => {
     const blob = new Blob([JSON.stringify(debugReport(),null,2)], {type:'application/json'});
     const url = URL.createObjectURL(blob);
