@@ -317,12 +317,35 @@ function loadPeerJS() {
   if (window.Peer) return Promise.resolve(window.Peer);
   if (_peerJsPromise) return _peerJsPromise;
   _peerJsPromise = new Promise((resolve) => {
-    const script = document.createElement('script');
-    script.src = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';
-    script.async = true;
-    script.onload = () => resolve(window.Peer || null);
-    script.onerror = () => resolve(null);
-    document.head.appendChild(script);
+    const sources = [
+      'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js',
+      'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js',
+    ];
+    const trySource = (i) => {
+      if (window.Peer) return resolve(window.Peer);
+      if (i >= sources.length) return resolve(null);
+      const script = document.createElement('script');
+      script.src = sources[i];
+      script.async = true;
+      let settled = false;
+      const fail = () => {
+        if (settled) return;
+        settled = true;
+        script.remove();
+        trySource(i + 1);
+      };
+      const timeout = setTimeout(fail, 3500);
+      script.onload = () => {
+        clearTimeout(timeout);
+        if (settled) return;
+        settled = true;
+        if (window.Peer) resolve(window.Peer);
+        else trySource(i + 1);
+      };
+      script.onerror = () => { clearTimeout(timeout); fail(); };
+      document.head.appendChild(script);
+    };
+    trySource(0);
   });
   return _peerJsPromise;
 }
@@ -406,8 +429,11 @@ export class SwitchHostBridge {
               this._peerConns.delete(conn);
             });
           });
+          peer.on('disconnected', () => {
+            if (this._started && !peer.destroyed) try { peer.reconnect(); } catch {}
+          });
           peer.on('error', () => {
-            // Silent fallback to LAN relay / BroadcastChannel
+            // LAN and BroadcastChannel remain available when P2P is unavailable.
           });
         } catch { /* ignore */ }
       });
@@ -419,6 +445,9 @@ export class SwitchHostBridge {
 
   stop() {
     this._started = false;
+    this.connected = false;
+    this.transport = 'disconnected';
+    this._conn = null;
     if (this._pollTimer) {
       clearInterval(this._pollTimer);
       this._pollTimer = null;
@@ -711,7 +740,8 @@ export class SwitchClientBridge {
         try {
           const peer = new PeerClass({ debug: 0 });
           this._peer = peer;
-          peer.on('open', () => {
+          const connect = () => {
+            if (!this._started || peer.destroyed) return;
             const targetId = `${PEER_PREFIX}${this.roomCode}`;
             const conn = peer.connect(targetId, { reliable: false });
             this._conn = conn;
@@ -722,10 +752,21 @@ export class SwitchClientBridge {
               this.onStatus?.({ connected: true, transport: this.transport, roomCode: this.roomCode });
             });
             conn.on('data', (data) => {
-              if (data && data.type === 'host_telemetry') {
-                this._handleTelemetry(data, 'WebRTC-PeerJS');
-              }
+              if (data && data.type === 'host_telemetry') this._handleTelemetry(data, 'WebRTC-PeerJS');
             });
+            const reconnect = () => {
+              if (this._conn !== conn) return;
+              this.connected = false;
+              this.transport = 'reconnecting';
+              this.onStatus?.({ connected: false, transport: this.transport, roomCode: this.roomCode });
+              if (this._started) setTimeout(connect, 1100);
+            };
+            conn.on('close', reconnect);
+            conn.on('error', reconnect);
+          };
+          peer.on('open', connect);
+          peer.on('disconnected', () => {
+            if (this._started && !peer.destroyed) try { peer.reconnect(); } catch {}
           });
         } catch { /* ignore */ }
       });
@@ -766,7 +807,7 @@ export class SwitchClientBridge {
         });
         if (!res.ok) return;
         const data = await res.json();
-        if (data && data.ok) {
+        if (data && data.ok && data.hostTelemetry) {
           if (!this.connected) {
             this.connected = true;
             this.transport = 'LAN-Relay';
