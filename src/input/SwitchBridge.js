@@ -495,8 +495,16 @@ export class SwitchHostBridge {
         });
         if (!res.ok) return;
         const data = await res.json();
-        if (data && data.controllerInput && data.controllerInput.ts > this.lastPacketAt) {
-          this._handleIncomingPacket(data.controllerInput, 'LAN-Relay');
+        // Do NOT compare device timestamps to the host's Date.now().
+        // iPhone/Android and TV clocks can differ by minutes; use sequence
+        // numbers, or timestamp as fallback for legacy packets.
+        const packet = data?.controllerInput;
+        const seq = Number(packet?.seq);
+        const previousSeq = this.lastSeq;
+        if (packet && (!this.connected ||
+            (Number.isFinite(seq) && seq !== previousSeq) ||
+            (!Number.isFinite(seq) && packet.ts !== this.latestState.ts))) {
+          this._handleIncomingPacket(packet, 'LAN-Relay');
         }
       } catch {
         // Static build or offline
@@ -783,6 +791,9 @@ export class SwitchClientBridge {
 
   stop() {
     this._started = false;
+    this.connected = false;
+    this.transport = 'disconnected';
+    this._conn = null;
     if (this._pollTimer) {
       clearInterval(this._pollTimer);
       this._pollTimer = null;
