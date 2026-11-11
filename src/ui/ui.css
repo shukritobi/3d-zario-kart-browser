@@ -3480,3 +3480,17 @@ body.zario-splitscreen .sk3d-hud { opacity:.3; pointer-events:none; }
   .sk3d-screen-title { font-size:clamp(13px,3.5vh,18px); }
   .sk3d-select-btn { min-height:32px; padding:3px 22px; }
 }
+
+/* Export is adjacent to selection rather than a third row that squashes phones. */
+.sk3d-racer-actions { display:flex; justify-content:center; align-items:stretch; gap:8px; min-width:0; flex:none; }
+.sk3d-racer-actions .sk3d-select-btn { flex:1 1 auto; min-width:0; margin:0; }
+.sk3d-racer-export {
+  flex:0 0 auto; min-height:44px; padding:7px 15px; font-size:clamp(11px,2.5vh,15px);
+  color:#fff; background:#2563a1; border:2px solid #173859; border-radius:12px;
+}
+@media (max-height:500px) and (pointer:coarse) {
+  .sk3d-racer-actions { gap:5px; }
+  .sk3d-racer-actions .sk3d-select-btn, .sk3d-racer-export {
+    min-height:32px!important; padding:3px 8px!important; font-size:11px!important;
+  }
+}
