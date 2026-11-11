@@ -48,6 +48,10 @@ export function createDefaultControllerPacket() {
     swapItem: false,
     pause: false,
     startRace: false,
+    menuX: 0,
+    menuY: 0,
+    menuConfirm: false,
+    menuBack: false,
     gyroEnabled: false,
     tiltDeg: 0,
   };
@@ -339,6 +343,14 @@ export class SwitchHostBridge {
     this._edgeSwapPressed = false;
     this._edgePausePressed = false;
     this._edgeStartPressed = false;
+    this._edgeMenuX = 0;
+    this._edgeMenuY = 0;
+    this._edgeMenuConfirm = false;
+    this._edgeMenuBack = false;
+    this._prevRawMenuX = 0;
+    this._prevRawMenuY = 0;
+    this._prevRawMenuConfirm = false;
+    this._prevRawMenuBack = false;
     this._prevRawItem = false;
     this._prevRawSwap = false;
     this._prevRawPause = false;
@@ -488,6 +500,18 @@ export class SwitchHostBridge {
     const rawSwap = !!packet.swapItem;
     const rawPause = !!packet.pause;
     const rawStart = !!packet.startRace;
+    const rawMenuX = Math.max(-1, Math.min(1, Math.round(Number(packet.menuX) || 0)));
+    const rawMenuY = Math.max(-1, Math.min(1, Math.round(Number(packet.menuY) || 0)));
+    const rawMenuConfirm = !!packet.menuConfirm;
+    const rawMenuBack = !!packet.menuBack;
+    if (rawMenuX && rawMenuX !== this._prevRawMenuX) this._edgeMenuX = rawMenuX;
+    if (rawMenuY && rawMenuY !== this._prevRawMenuY) this._edgeMenuY = rawMenuY;
+    if (rawMenuConfirm && !this._prevRawMenuConfirm) this._edgeMenuConfirm = true;
+    if (rawMenuBack && !this._prevRawMenuBack) this._edgeMenuBack = true;
+    this._prevRawMenuX = rawMenuX;
+    this._prevRawMenuY = rawMenuY;
+    this._prevRawMenuConfirm = rawMenuConfirm;
+    this._prevRawMenuBack = rawMenuBack;
 
     if (rawItem && !this._prevRawItem) this._edgeItemPressed = true;
     if (rawSwap && !this._prevRawSwap) this._edgeSwapPressed = true;
@@ -512,6 +536,10 @@ export class SwitchHostBridge {
       swapItem: rawSwap,
       pause: rawPause,
       startRace: rawStart,
+      menuX: rawMenuX,
+      menuY: rawMenuY,
+      menuConfirm: rawMenuConfirm,
+      menuBack: rawMenuBack,
       gyroEnabled: !!packet.gyroEnabled,
       tiltDeg: Number(packet.tiltDeg) || 0,
     };
@@ -541,6 +569,14 @@ export class SwitchHostBridge {
     const swapItem = this._edgeSwapPressed;
     const pause = this._edgePausePressed;
     const startRace = this._edgeStartPressed;
+    const menuX = this._edgeMenuX;
+    const menuY = this._edgeMenuY;
+    const menuConfirm = this._edgeMenuConfirm;
+    const menuBack = this._edgeMenuBack;
+    this._edgeMenuX = 0;
+    this._edgeMenuY = 0;
+    this._edgeMenuConfirm = false;
+    this._edgeMenuBack = false;
     this._edgeItemPressed = false;
     this._edgeSwapPressed = false;
     this._edgePausePressed = false;
@@ -552,6 +588,10 @@ export class SwitchHostBridge {
       swapItem,
       pause,
       startRace,
+      menuX,
+      menuY,
+      menuConfirm,
+      menuBack,
     };
   }
 
@@ -763,6 +803,10 @@ export class SwitchClientBridge {
       swapItem: !!inputState.swapItem,
       pause: !!inputState.pause,
       startRace: !!inputState.startRace,
+      menuX: Math.max(-1, Math.min(1, Number(inputState.menuX) || 0)),
+      menuY: Math.max(-1, Math.min(1, Number(inputState.menuY) || 0)),
+      menuConfirm: !!inputState.menuConfirm,
+      menuBack: !!inputState.menuBack,
       gyroEnabled: !!inputState.gyroEnabled,
       tiltDeg: Number(inputState.tiltDeg) || 0,
     };
