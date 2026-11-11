@@ -1,0 +1,42 @@
+name: Full six-track Zario Kart audit
+on:
+  workflow_dispatch:
+  # Sunday 02:00 Malaysia time (18:00 UTC Saturday)
+  schedule:
+    - cron: '0 18 * * 6'
+permissions:
+  contents: read
+jobs:
+  full-track-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install game and Playwright
+        run: |
+          npm install --no-audit --no-fund
+          npm install --no-save @playwright/test
+          npx playwright install --with-deps chromium
+      - name: Unit tests and production build
+        run: |
+          node --test tests/unit/*.test.mjs
+          npm run build
+      - name: Drive every track and collect full diagnostics
+        run: npm run audit:tracks
+      - name: Publish report in Actions summary
+        if: always()
+        run: |
+          if [ -f artifacts/track-audit/SUMMARY.md ]; then
+            cat artifacts/track-audit/SUMMARY.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload complete flight-recorder and screenshots
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zario-all-six-tracks-logs-and-screenshots
+          path: artifacts/track-audit/
+          if-no-files-found: warn
+          retention-days: 30
