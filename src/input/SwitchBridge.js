@@ -331,7 +331,7 @@ function loadPeerJS() {
       const fail = () => {
         if (settled) return;
         settled = true;
-        script.remove();
+        script.remove?.();
         trySource(i + 1);
       };
       const timeout = setTimeout(fail, 3500);
